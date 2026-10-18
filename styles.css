@@ -64,3 +64,16 @@
 #cameraFrame .preview-trajectories{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;pointer-events:none;z-index:3}
 #cameraFrame .preview-celestials{z-index:4}
 .preview-hint{pointer-events:none}
+
+/* v1.2 surface-clamped true-north solar/lunar bearing rays */
+.ground-bearing-panel{border-top:1px solid #334557;margin-top:12px;padding-top:10px}
+.ground-bearing-check{display:flex!important;align-items:center;flex-direction:row!important;gap:8px;font-size:12px!important;font-weight:650}
+.ground-bearing-check input{flex:none}
+.ground-bearing-range{grid-template-columns:100px minmax(62px,1fr) 79px;gap:8px;margin:10px 0}
+.ground-bearing-range label{font-weight:600}
+.ground-bearing-range input[type=range]{min-width:0}
+.ground-bearing-range input[type=number]{height:28px!important;text-align:right;font-variant-numeric:tabular-nums;padding:2px 4px!important}
+.ground-bearing-readout{border:1px solid #334557;border-radius:5px;padding:7px 8px;background:#172535;margin-top:7px}
+.ground-bearing-row{display:flex;flex-wrap:wrap;gap:6px 9px;align-items:center;margin:4px 0;font-size:10px;font-variant-numeric:tabular-nums}
+.ground-bearing-dot{display:inline-block;width:9px;height:9px;border-radius:50%;border:1px solid #fff5}
+.ground-bearing-row b{min-width:28px;font-size:11px}

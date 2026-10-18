@@ -7,7 +7,7 @@
   <title>Photo Geometry — 3D photography planner</title>
   <script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/';</script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Widgets/widgets.css">
-  <link rel="stylesheet" href="styles.css?v=11">
+  <link rel="stylesheet" href="styles.css?v=12">
   <script defer src="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Cesium.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
   <script defer src="optics.js?v=2"></script>
@@ -16,13 +16,14 @@
   <script defer src="sky-shell.js?v=1"></script>
   <script defer src="solar-phases.js?v=2"></script>
   <script defer src="preview-projection.js?v=1"></script>
-  <script defer src="app.js?v=11"></script>
+  <script defer src="ground-bearings.js?v=1"></script>
+  <script defer src="app.js?v=12"></script>
 </head>
 <body>
   <div class="app">
     <aside class="panel">
       <header>
-        <h1>Photo Geometry <small>v1.1</small></h1>
+        <h1>Photo Geometry <small>v1.2</small></h1>
         <p>3D camera field-of-view &amp; depth-of-field planner</p>
       </header>
       <div class="view-actions">
@@ -113,6 +114,16 @@
         <div id="utcReadout" class="hint"></div>
         <div class="checks"><label><input id="showSun" type="checkbox" checked> Sun</label><label><input id="showMoon" type="checkbox" checked> Moon</label><label><input id="showCore" type="checkbox" checked> Galactic core</label></div>
         <div class="checks"><label><input id="showTrajectories" type="checkbox" checked> 24-hour trajectory arcs</label></div>
+        <div class="ground-bearing-panel">
+          <label class="ground-bearing-check"><input id="showGroundBearings" type="checkbox" checked> Ground bearings · Sun &amp; Moon</label>
+          <div class="rangegrid ground-bearing-range">
+            <label for="groundBearingLengthSlider">Line length (m)</label>
+            <input id="groundBearingLengthSlider" type="range" min="0" max="1000" step="1" value="547">
+            <input id="groundBearingLength" type="number" min="100" max="50000" step="100" value="3000" aria-label="Ground bearing line length in metres">
+          </div>
+          <div id="groundBearingReadout" class="ground-bearing-readout" aria-live="off"></div>
+          <p class="hint">Two rays per body mark today's rise and set azimuths; a heavier ray shows the current azimuth (dashed below the horizon). Lines follow the visible ground/3D mesh. Astronomical horizon, not local obstructions.</p>
+        </div>
         <div class="rangegrid sky-shell-range">
           <label for="celestialShellScale">Sky shell radius</label>
           <input id="celestialShellScale" type="range" min="1.5" max="10" step="0.5" value="3">

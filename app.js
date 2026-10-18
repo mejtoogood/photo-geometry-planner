@@ -2,7 +2,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const C = window.Cesium;
-  if (!C || !window.Optics || !window.AstroDirections || !window.LensControls || !window.SkyShell || !window.SolarPhases || !window.PreviewProjection) {
+  if (!C || !window.Optics || !window.AstroDirections || !window.LensControls || !window.SkyShell || !window.SolarPhases || !window.PreviewProjection || !window.GroundBearings) {
     $('status').textContent = 'Required script failed to load. Check CDN access and refresh.';
     $('status').classList.add('error');
     return;
@@ -11,6 +11,7 @@
   const S = window.SkyShell;
   const Solar = window.SolarPhases;
   const Projection = window.PreviewProjection;
+  const Ground = window.GroundBearings;
   const rad = C.Math.toRadians;
   const deg = C.Math.toDegrees;
 
@@ -26,6 +27,7 @@
     focal:50,aperture:5.6,focus:10,coc:.03,
     showFrustum:true,showDof:true,showFocus:true,showAxis:true,
     showSun:true,showMoon:true,showCore:true,showTrajectories:true,
+    showGroundBearings:true,groundBearingLength:Ground.DEFAULT_LENGTH,
     celestialShellScale:S.DEFAULT_SCALE,celestialThroughTerrain:true,
     aimTarget:'sun',targetLat:-35.3000,targetLon:149.135,targetGround:575,targetAgl:1.6,
     utcOffset:tzHours,wallTime:'',timeStep:15,scene:'standard'
@@ -51,6 +53,7 @@
     out.heading=((out.heading%360)+360)%360;out.pitch=clamp(out.pitch,-89,89);
     out.roll=clamp(out.roll,-180,180);out.extent=clamp(out.extent,1,50000);
     out.celestialShellScale=S.sanitiseScale(out.celestialShellScale);
+    out.groundBearingLength=Ground.limitLength(out.groundBearingLength);
     for (const k of ['sensorWidth','sensorHeight','focal','aperture','focus','coc']) if (out[k]<=0) out[k]=defaultState()[k];
     out.focal=clamp(out.focal,1,2000);out.aperture=L.apertures[L.apertureIndex(out.aperture)];
     out.focus=clamp(out.focus,Math.max(.01,out.focal/1000+.001),10000);
@@ -69,7 +72,7 @@
   let viewer=null, googleTiles=null, terrainProvider=null, terrainTask=null;
   let overlays=[]; let preview=false, overviewPose=null, placing=null, drawPending=false;
   let previewControllerState=null,lookPointer=null;
-  let elevationRevision=0, targetElevationRevision=0, lastAstro=null, trajectoryCache=null, solarDayCache=null;
+  let elevationRevision=0, targetElevationRevision=0, lastAstro=null, trajectoryCache=null, solarDayCache=null, groundDayCache=null;
   function status(message,error=false) {
     $('status').textContent=message;$('status').classList.toggle('error',error);
   }
@@ -93,6 +96,7 @@
       else el.value=String(state[key]);
     }
     renderLensControls();renderTargetFields();
+    $('groundBearingLengthSlider').value=Ground.toSlider(state.groundBearingLength);
     $('headingNumber').value=state.heading;$('pitchNumber').value=state.pitch;$('rollNumber').value=state.roll;
     $('lat').value=state.lat.toFixed(6);$('lon').value=state.lon.toFixed(6);
     $('amsl').value=(state.ground+state.agl).toFixed(2);
@@ -119,6 +123,7 @@
         `DOF: ${fmt(o.total,2)} m · Hyperfocal: ${fmt(o.hyperfocal,2)} m`;
     } catch(e){$('opticsReadout').textContent=e.message;}
     $('celestialShellReadout').textContent=`${state.celestialShellScale.toLocaleString('en-AU',{maximumFractionDigits:1})}× · ${fmt(S.radius(state.extent,state.celestialShellScale),0)} m`;
+    $('groundBearingLength').value=state.groundBearingLength;
     $('projectionModeNote').textContent=state.extent>SOLID_GEOMETRY_LIMIT_M
       ? 'Long-range projection: outlines only. Filled volumes are hidden beyond 1 km to avoid covering the terrain.'
       : 'Short-range projection: translucent FOV, DOF and focus surfaces are enabled.';
@@ -219,6 +224,86 @@
     const shown=inside?' <span class="isIn">in FOV</span>':'';
     const phase=name==='Moon'?` · ${Math.round(details.phase*100)}% lit`:'';
     return `<div class="astro-line"><b>${name}</b><span>Az ${fmt(details.az,1)}° · Alt ${fmt(details.alt,1)}°${phase}${shown}</span><button type="button" data-aim="${name.toLowerCase()}">Aim</button></div>`;
+  }
+  function cachedGroundDay() {
+    const key=[state.lat,state.lon,absoluteHeight(),state.wallTime.slice(0,10),state.utcOffset].join('|');
+    if(groundDayCache?.key!==key){
+      const results=Ground.dailyRiseSet(window.Astronomy,window.AstroDirections.calculate,
+        state.wallTime.slice(0,10),state.utcOffset,state.lat,state.lon,absoluteHeight());
+      groundDayCache={key,data:results};
+    }
+    return groundDayCache.data;
+  }
+  function showGroundBearingReadout(day) {
+    const colours={sun:'#ffc268',moon:'#c5c9ff'};
+    const rows=[];
+    for(const name of ['sun','moon']){
+      const current=lastAstro?.[name];
+      const format=entry=>entry?fmt(entry.az,1)+'°':'—';
+      const rise=day[name].rise,set=day[name].set;
+      rows.push('<div class="ground-bearing-row"><span class="ground-bearing-dot" style="background:'+colours[name]+'"></span>'+
+        '<b>'+name.charAt(0).toUpperCase()+name.slice(1)+'</b>'+
+        '<span>Rise '+format(rise)+'</span><span>Set '+format(set)+'</span>'+
+        '<span>Now '+(current?fmt(current.az,1)+'° '+(current.alt<0?'↓':'↑'):'—')+'</span></div>');
+    }
+    $('groundBearingReadout').innerHTML=rows.join('');
+  }
+  function drawGroundBearings() {
+    const day=cachedGroundDay();
+    showGroundBearingReadout(day);
+    // Only 3D planning view: camera preview uses angular sky trajectories.
+    if(preview || !state.showGroundBearings)return;
+    const colours={sun:'#ffc268',moon:'#c5c9ff'};
+    for(const body of ['sun','moon']){
+      if(!state['show'+(body==='sun'?'Sun':'Moon')])continue;
+      const entries=[
+        {kind:'Rise',az:day[body].rise?.az},
+        {kind:'Set',az:day[body].set?.az},
+        {kind:'Now',az:lastAstro[body].az,below:lastAstro[body].alt<0}
+      ];
+      for(const entry of entries){
+        if(!Number.isFinite(entry.az))continue; // No rise/set on this local day.
+        const route=Ground.sampleRay(state.lat,state.lon,entry.az,state.groundBearingLength,250);
+        const points=route.map(point=>C.Cartesian3.fromDegrees(point.lon,point.lat,0));
+        const current=entry.kind==='Now';
+        const tint=C.Color.fromCssColorString(colours[body]).withAlpha(current?1:.7);
+        const dashed=current&&entry.below;
+        const material=dashed?new C.PolylineDashMaterialProperty({color:tint,dashLength:18}):tint;
+        collect(viewer.entities.add({
+          name:body+' '+entry.kind.toLowerCase()+' ground bearing',
+          polyline:{
+            positions:points,
+            clampToGround:true,
+            classificationType:C.ClassificationType.BOTH,
+            arcType:C.ArcType.GEODESIC,
+            width:current?4:2.5,
+            material,
+            zIndex:current?4:3
+          }
+        }));
+        const end=route.at(-1);
+        const labelColour=C.Color.fromCssColorString(colours[body]);
+        collect(viewer.entities.add({
+          position:C.Cartesian3.fromDegrees(end.lon,end.lat,0),
+          label:{
+            text:(body==='sun'?'Sun':'Moon')+' '+entry.kind.toLowerCase()+' · '+fmt(entry.az,1)+'°',
+            font:'bold 12px sans-serif',
+            heightReference:C.HeightReference.CLAMP_TO_GROUND,
+            verticalOrigin:C.VerticalOrigin.BOTTOM,
+            pixelOffset:new C.Cartesian2(0,-12),
+            style:C.LabelStyle.FILL_AND_OUTLINE,outlineWidth:3,
+            outlineColor:C.Color.fromCssColorString('#0c1925'),fillColor:labelColour,
+            disableDepthTestDistance:Number.POSITIVE_INFINITY
+          },
+          point:{
+            pixelSize:current?9:6,color:labelColour,
+            outlineColor:C.Color.fromCssColorString('#152330'),outlineWidth:1,
+            heightReference:C.HeightReference.CLAMP_TO_GROUND,
+            disableDepthTestDistance:Number.POSITIVE_INFINITY
+          }
+        }));
+      }
+    }
   }
   function localDayStartUtc() {
     const [y,m,d]=state.wallTime.slice(0,10).split('-').map(Number);
@@ -330,6 +415,7 @@
       viewer.scene.backgroundColor=C.Color.fromCssColorString(Solar.skyColor(lastAstro.sun.alt));
       const colours={sun:'#ffc268',moon:'#c5c9ff',core:'#ee9bdc'};
       const names={sun:'Sun',moon:'Moon',core:'Core'};
+      drawGroundBearings();
       // An arbitrary camera-centred sky shell: its radius does not affect azimuth/altitude.
       const markerRange=S.radius(state.extent,state.celestialShellScale);
       if(!preview)drawTrajectories(pos,basis,markerRange,colours);
@@ -742,7 +828,19 @@
       state.celestialShellScale=S.sanitiseScale(Number($('celestialShellScale').value));
       schedule();
     });
-    for(const id of ['showFrustum','showDof','showFocus','showAxis','showSun','showMoon','showCore','showTrajectories','celestialThroughTerrain'])
+    $('groundBearingLengthSlider').addEventListener('input',()=>{
+      state.groundBearingLength=Ground.fromSlider($('groundBearingLengthSlider').value);
+      $('groundBearingLength').value=state.groundBearingLength;
+      schedule();
+    });
+    $('groundBearingLength').addEventListener('change',()=>{
+      const n=Number($('groundBearingLength').value);
+      state.groundBearingLength=Ground.limitLength(Number.isFinite(n)?n:Ground.DEFAULT_LENGTH);
+      $('groundBearingLength').value=state.groundBearingLength;
+      $('groundBearingLengthSlider').value=Ground.toSlider(state.groundBearingLength);
+      schedule();
+    });
+    for(const id of ['showFrustum','showDof','showFocus','showAxis','showSun','showMoon','showCore','showTrajectories','showGroundBearings','celestialThroughTerrain'])
       $(id).addEventListener('change',()=>{state[id]=$(id).checked;schedule();});
     $('wallTime').addEventListener('change',()=>{
       if(!Number.isFinite(Date.parse($('wallTime').value)))return;
