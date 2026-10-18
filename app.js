@@ -362,14 +362,23 @@
   }
   function viewFrustum() {
     const frame=$('cameraFrame').querySelector('.frame-inner');
-    frame.style.aspectRatio=`${state.sensorWidth} / ${state.sensorHeight}`;
-    const bounds=frame.getBoundingClientRect();
     const w=viewer.canvas.clientWidth,h=viewer.canvas.clientHeight;
-    // The outlined camera frame represents exactly the specified sensor FOV;
-    // Cesium renders some extra margin outside the frame for UI context.
+    if(w<=0 || h<=0)return; // Wait for Cesium's canvas to acquire its display size.
+    const ratio=state.sensorWidth/state.sensorHeight;
+    // Size the viewfinder against BOTH viewport dimensions so the entire sensor
+    // frame remains visible even with a wide canvas or an unusually tall format.
+    const frameWidth=Math.min(w*.88,h*.84*ratio);
+    const frameHeight=frameWidth/ratio;
+    frame.style.width=frameWidth+'px';
+    frame.style.height=frameHeight+'px';
+    frame.style.aspectRatio=String(ratio);
+    // Frustum is wider than the viewfinder because the surrounding margin is
+    // context; the sensor rectangle itself is the specified optical FOV.
     const angle=Projection.fovForFrame(state.sensorWidth,state.sensorHeight,state.focal,
-      w,h,bounds.width,bounds.height);
-    if(viewer.camera.frustum instanceof C.PerspectiveFrustum) viewer.camera.frustum.fov=angle;
+      w,h,frameWidth,frameHeight);
+    if(viewer.camera.frustum instanceof C.PerspectiveFrustum)viewer.camera.frustum.fov=angle;
+    const op=optical();
+    $('frameInfo').textContent=`${state.focal} mm · f/${state.aperture} · ${fmt(op.horizontalFov)}° H × ${fmt(op.verticalFov)}° V · ${fmt(state.heading)}° az / ${fmt(state.pitch)}° alt · ${fmt(state.roll,0)}° roll`;
   }
   function updatePreview() {
     if(!preview)return;
@@ -379,22 +388,30 @@
     viewFrustum();
   }
   function setPreview(active) {
-    if(!viewer)return;
-    if(active===preview)return;
+    if(!viewer||active===preview)return;
     if(active) {
       overviewPose={destination:C.Cartesian3.clone(viewer.camera.positionWC),
         direction:C.Cartesian3.clone(viewer.camera.directionWC),up:C.Cartesian3.clone(viewer.camera.upWC),
         fov:viewer.camera.frustum.fov};
-      preview=true;updatePreview();
+      // Reveal FIRST: measuring a hidden frame returns 0 × 0 and previously
+      // threw inside fovForFrame, preventing the viewfinder from appearing.
+      preview=true;
+      $('cameraFrame').hidden=false;
+      $('previewHint').hidden=false;
+      document.querySelector('.maparea').classList.add('preview-active');
+      updatePreview();
     } else {
       preview=false;
-      if(overviewPose){viewer.camera.setView({destination:overviewPose.destination,
-        orientation:{direction:overviewPose.direction,up:overviewPose.up}});
-        viewer.camera.frustum.fov=overviewPose.fov;}
+      $('cameraFrame').hidden=true;
+      $('previewHint').hidden=true;
+      document.querySelector('.maparea').classList.remove('preview-active');
+      $('previewCelestials').replaceChildren();
+      if(overviewPose){
+        viewer.camera.setView({destination:overviewPose.destination,
+          orientation:{direction:overviewPose.direction,up:overviewPose.up}});
+        viewer.camera.frustum.fov=overviewPose.fov;
+      }
     }
-    $('cameraFrame').hidden=!preview;
-    $('previewHint').hidden=!preview;
-    if(!preview)$('previewCelestials').replaceChildren();
     $('previewBtn').classList.toggle('primary',preview);
     $('overviewBtn').classList.toggle('primary',!preview);
     schedule();

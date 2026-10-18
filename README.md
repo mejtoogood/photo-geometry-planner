@@ -54,3 +54,7 @@ For projection extents above **1 km**, the tool switches automatically to wirefr
 ## Google 3D surface heights
 
 When the Google Photorealistic 3D Tiles layer is active, clicking to place a camera or target now **preserves the clicked mesh surface height**, instead of overriding it with Cesium World Terrain. Resampling explicitly queries the Google 3D Tiles mesh using `scene.sampleHeightMostDetailed`, then falls back to Cesium World Terrain only if no Google surface can be sampled. The elevation source is shown beside the camera/target height fields. A photogrammetry mesh may return roof/tree elevation rather than bare ground; the values remain manually editable. Google 3D camera views close to the surface may still show mesh artefacts where models are imperfect.
+
+## Viewfinder rendering fix (v1.0)
+
+The previous camera-view toggle attempted to size its camera frame while `hidden` was still set, yielding a zero-size measurement and throwing during focal-length FOV calculation. It now reveals the frame before updating the Cesium camera. The frame's pixel dimensions are explicitly fit within the available scene using the sensor aspect ratio, with the Cesium perspective calculated to make the outlined sensor rectangle correspond to the lens field of view. A stronger viewfinder border, corner markings, crosshair, rule of thirds and live focal/aperture/FOV/heading/roll readout make it obvious when camera view is active. Cesium's map legend/instructions are suppressed in viewfinder mode.

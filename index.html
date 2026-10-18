@@ -7,7 +7,7 @@
   <title>Photo Geometry — 3D photography planner</title>
   <script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/';</script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Widgets/widgets.css">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=10">
   <script defer src="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Cesium.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
   <script defer src="optics.js?v=2"></script>
@@ -16,13 +16,13 @@
   <script defer src="sky-shell.js?v=1"></script>
   <script defer src="solar-phases.js?v=2"></script>
   <script defer src="preview-projection.js?v=1"></script>
-  <script defer src="app.js?v=9"></script>
+  <script defer src="app.js?v=10"></script>
 </head>
 <body>
   <div class="app">
     <aside class="panel">
       <header>
-        <h1>Photo Geometry <small>v0.9</small></h1>
+        <h1>Photo Geometry <small>v1.0</small></h1>
         <p>3D camera field-of-view &amp; depth-of-field planner</p>
       </header>
       <div class="view-actions">
@@ -151,7 +151,16 @@
       <div id="previewHint" class="preview-hint" hidden>
         Camera view uses the selected roll. <button id="previewLevelBtn" type="button">Level roll to 0°</button>
       </div>
-      <div id="cameraFrame" hidden><div class="frame-inner"><div class="crosshair">+</div><div id="previewCelestials" class="preview-celestials" aria-label="Celestial positions in the camera frame"></div><span>CAMERA FRAME · GEOMETRIC VIEW</span></div></div>
+      <div id="cameraFrame" hidden>
+        <div class="frame-inner">
+          <div class="viewfinder-title">SENSOR FRAME</div>
+          <div class="crosshair" aria-hidden="true">+</div>
+          <div class="viewfinder-corner tl"></div><div class="viewfinder-corner tr"></div>
+          <div class="viewfinder-corner bl"></div><div class="viewfinder-corner br"></div>
+          <div id="previewCelestials" class="preview-celestials" aria-label="Celestial positions in the camera frame"></div>
+          <div id="frameInfo" class="viewfinder-footer">CAMERA · GEOMETRIC VIEW</div>
+        </div>
+      </div>
       <div class="maphint">Left-drag orbit · Wheel zoom · Right-drag tilt · Placement buttons arm camera or target picking</div>
       <div class="maplegend"><span><i class="swatch fov"></i> FOV</span><span><i class="swatch dof"></i> DOF</span><span><i class="swatch sun"></i> Sun</span><span><i class="swatch moon"></i> Moon</span><span><i class="swatch core"></i> Galactic core</span></div>
     </main>

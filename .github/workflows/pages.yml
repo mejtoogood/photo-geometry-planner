@@ -18,6 +18,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check JavaScript and run regression tests
+        run: |
+          for source in app.js astro.js controls.js optics.js preview-projection.js sky-shell.js solar-phases.js; do
+            node --check "$source"
+          done
+          for test in tests/*.test.js; do
+            node "$test"
+          done
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

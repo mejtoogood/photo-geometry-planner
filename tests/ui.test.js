@@ -6,7 +6,7 @@ const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
 const app=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
 const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]);
 assert.equal(ids.length,new Set(ids).size,'HTML IDs must be unique');
-for (const required of ['focalSlider','apertureSlider','focusSlider','targetLat','targetLon','targetGround','targetAgl','targetAmsl','targetPickBtn','aimTarget','aimTargetBtn','showTrajectories','celestialShellScale','celestialShellReadout','celestialThroughTerrain','solarEventsBody','solarPhaseReadout','previewCelestials','levelRollBtn','previewHint','previewLevelBtn','projectionModeNote'])
+for (const required of ['focalSlider','apertureSlider','focusSlider','targetLat','targetLon','targetGround','targetAgl','targetAmsl','targetPickBtn','aimTarget','aimTargetBtn','showTrajectories','celestialShellScale','celestialShellReadout','celestialThroughTerrain','solarEventsBody','solarPhaseReadout','previewCelestials','levelRollBtn','previewHint','previewLevelBtn','projectionModeNote','frameInfo'])
   assert.ok(ids.includes(required),`Missing ${required}`);
 for(const match of app.matchAll(/\$\('([^']+)'\)/g)){
   assert.ok(ids.includes(match[1]),`JavaScript references missing HTML element: ${match[1]}`);
@@ -31,4 +31,8 @@ assert.ok(app.includes("scene.sampleHeightMostDetailed([pos],overlays)"),'Sample
 assert.ok(app.includes("if(useGoogleMesh)"),'Mesh sampling must depend on active Google 3D');
 assert.ok(app.includes("if(!p && state.scene!=='google')"),'No ellipsoid fallbacks in Google mode');
 assert.ok(app.includes("orientation:{direction:basis.f,up:basis.up}"),'Preview camera uses optical frustum basis');
+const previewSource=app.slice(app.indexOf('function setPreview(active)'),app.indexOf('function flyToCamera()'));
+assert.ok(previewSource.indexOf("$('cameraFrame').hidden=false") < previewSource.indexOf('updatePreview()'),'Must show viewfinder before measuring or updating preview');
+assert.ok(previewSource.includes("document.querySelector('.maparea').classList.add('preview-active')"),'Viewfinder mode activates presentation');
+assert.ok(html.includes('viewfinder-corner'),'Viewfinder must contain explicit corner marks');
 console.log('UI references tests passed');
