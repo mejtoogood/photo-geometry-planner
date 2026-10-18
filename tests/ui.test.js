@@ -20,5 +20,6 @@ assert.ok(!app.includes('clamp(state.extent*.9,100,3000)'), 'Old capped celestia
 assert.ok(app.includes('S.radius(state.extent,state.celestialShellScale)'), 'Celestial display distance must use the adjustable shell radius');
 assert.ok(app.includes('depthFailMaterial'), 'Celestial through-terrain rendering must use depth-fail material');
 assert.ok(app.includes('Solar.skyColor(lastAstro.sun.alt)'), 'Solar phase must control the sky background');
+assert.ok(app.includes('Solar.PHASE_COLORS[row.key]'), 'Every solar table row must show its sky colour');
 assert.ok(!app.includes('lastAstro.sun.alt>=0 ? DAY_SKY : C.Color.BLACK'), 'Old binary sky must be removed');
 console.log('UI references tests passed');

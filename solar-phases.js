@@ -3,38 +3,42 @@
    Astronomical events use Astronomy Engine's searches rather than sampled approximations. */
 (function (root) {
   'use strict';
-  const PALETTE = [
-    [-90,'#000000'],[-18,'#050913'],[-12,'#142b50'],
-    [-6,'#265c9c'],[-4,'#4d7db8'],[-0.833,'#b17c91'],
-    [0,'#e6a665'],[3,'#e6bb83'],[6,'#91c5e9'],
-    [20,'#76b7e2'],[90,'#76b7e2']
-  ];
+  // Discrete colours. Each twilight-table row has a dedicated swatch.
+  // Blue hour and civil twilight overlap; golden hour contains sunrise/sunset.
+  // Short, explicit boundary bands give each row a visible representation.
+  const PHASE_COLORS = Object.freeze({
+    night:'#000000',
+    astronomical:'#18172f',
+    nautical:'#182c54',
+    civil:'#527da7',
+    blue:'#2865b5',
+    sun:'#db8464',
+    golden:'#e4ac59',
+    day:'#76b7e2'
+  });
+  const PHASE_LABELS = Object.freeze({
+    night:'Night', astronomical:'Astronomical twilight',
+    nautical:'Nautical twilight', civil:'Civil twilight',
+    blue:'Blue hour', sun:'Sunrise / sunset',
+    golden:'Golden hour', day:'Day'
+  });
   const ANGLES = Object.freeze({ astronomical:-18, nautical:-12, civil:-6, blue:-4, golden:6 });
-  function parseHex(hex) {return [1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));}
-  function interpolate(a,b,t) {
-    const c=parseHex(a),d=parseHex(b);
-    return '#'+c.map((n,i)=>Math.round(n+(d[i]-n)*t).toString(16).padStart(2,'0')).join('');
+  function phaseForAltitude(alt) {
+    if(!Number.isFinite(alt))return {key:'night',label:'Unknown'};
+    let key;
+    if(alt < -18) key='night';
+    else if(alt < -12) key='astronomical';
+    else if(alt < -6) key='nautical';
+    else if(alt < -5.5) key='civil';
+    else if(alt < -4) key='blue';
+    else if(alt < -0.9) key='golden';
+    else if(alt < 0.9) key='sun';
+    else if(alt < 6) key='golden';
+    else key='day';
+    return {key,label:PHASE_LABELS[key]};
   }
-  function skyColor(alt) {
-    if(!Number.isFinite(alt))return '#000000';
-    if(alt<=PALETTE[0][0])return PALETTE[0][1];
-    for(let i=1;i<PALETTE.length;i++){
-      if(alt<=PALETTE[i][0]){
-        const [a,ca]=PALETTE[i-1],[b,cb]=PALETTE[i];
-        return interpolate(ca,cb,(alt-a)/(b-a));
-      }
-    }
-    return PALETTE.at(-1)[1];
-  }
-  function phaseName(alt) {
-    if(!Number.isFinite(alt))return 'Unknown';
-    if(alt < -18)return 'Night';
-    if(alt < -12)return 'Astronomical twilight';
-    if(alt < -6)return 'Nautical twilight';
-    if(alt < -4)return 'Blue hour';
-    if(alt < 6)return 'Golden hour';
-    return 'Day';
-  }
+  function phaseName(alt) {return phaseForAltitude(alt).label;}
+  function skyColor(alt) {return PHASE_COLORS[phaseForAltitude(alt).key];}
   function localDayStart(day,offset) {
     const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
     if(!m||!Number.isFinite(offset))throw new Error('Invalid date or UTC offset');
@@ -72,26 +76,26 @@
   function toRows(info) {
     const e=info.events,z=info.offset;
     const instant=(label,k)=>({
-      label,
+      label,key:k,
       morning:{text:formatTime(e[k].morning,z),time:e[k].morning},
       evening:{text:formatTime(e[k].evening,z),time:e[k].evening}
     });
-    function interval(label,amStart,amEnd,pmStart,pmEnd) {
+    function interval(label,key,amStart,amEnd,pmStart,pmEnd) {
       function cell(start,finish) {
         return {text:start&&finish?formatTime(start,z)+'–'+formatTime(finish,z):'—',time:start&&finish?start:null};
       }
-      return {label,morning:cell(amStart,amEnd),evening:cell(pmStart,pmEnd)};
+      return {label,key,morning:cell(amStart,amEnd),evening:cell(pmStart,pmEnd)};
     }
     return [
       instant('Astronomical twilight','astronomical'),
       instant('Nautical twilight','nautical'),
       instant('Civil twilight','civil'),
       instant('Sunrise / sunset','sun'),
-      interval('Blue hour',e.civil.morning,e.blue.morning,e.blue.evening,e.civil.evening),
-      interval('Golden hour',e.blue.morning,e.golden.morning,e.golden.evening,e.blue.evening)
+      interval('Blue hour','blue',e.civil.morning,e.blue.morning,e.blue.evening,e.civil.evening),
+      interval('Golden hour','golden',e.blue.morning,e.golden.morning,e.golden.evening,e.blue.evening)
     ];
   }
-  const api={PALETTE,ANGLES,skyColor,phaseName,localDayStart,calculateDay,formatTime,toRows};
+  const api={PHASE_COLORS,PHASE_LABELS,ANGLES,phaseForAltitude,skyColor,phaseName,localDayStart,calculateDay,formatTime,toRows};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else root.SolarPhases=api;
 })(typeof window!=='undefined'?window:globalThis);

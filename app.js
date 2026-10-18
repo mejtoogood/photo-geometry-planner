@@ -129,15 +129,17 @@
   }
   function renderSolarEvents() {
     const solarAltitude=lastAstro?.sun?.alt;
-    $('solarPhaseReadout').textContent=Number.isFinite(solarAltitude)
-      ? Solar.phaseName(solarAltitude)+' · Sun altitude '+fmt(solarAltitude,1)+'°'
+    const phase=Solar.phaseForAltitude(solarAltitude);
+    $('solarPhaseReadout').innerHTML=Number.isFinite(solarAltitude)
+      ? '<span class="solar-swatch" style="background-color:'+Solar.PHASE_COLORS[phase.key]+'" aria-hidden="true"></span>'
+        +phase.label+' · Sun altitude '+fmt(solarAltitude,1)+'°'
       : 'Sun altitude not yet calculated';
     try {
       const rows=Solar.toRows(cachedSolarDay());
       const cell=entry=>entry.time
         ? `<td><button type="button" class="solar-event" data-event-time="${entry.time.getTime()}" title="Set planning time to this event">${entry.text}</button></td>`
         : '<td>—</td>';
-      $('solarEventsBody').innerHTML=rows.map(row=>`<tr><th scope="row">${row.label}</th>${cell(row.morning)}${cell(row.evening)}</tr>`).join('');
+      $('solarEventsBody').innerHTML=rows.map(row=>`<tr class="${phase.key===row.key?'current-phase':''}"><th scope="row"><span class="solar-swatch" style="background-color:${Solar.PHASE_COLORS[row.key]}" aria-hidden="true"></span>${row.label}</th>${cell(row.morning)}${cell(row.evening)}</tr>`).join('');
     } catch(e) {
       console.warn('Solar event calculations unavailable',e);
       $('solarEventsBody').innerHTML='<tr><td colspan="3">Solar events unavailable for this date/location.</td></tr>';
@@ -247,7 +249,7 @@
   function drawAstronomy(pos,basis,op) {
     try {
       const date=dateFromWall();lastAstro=window.AstroDirections.calculate(date,state.lat,state.lon,absoluteHeight());
-      // Astronomical solar-altitude palette; no Cesium celestial skybox or atmosphere.
+      // Flat, discrete colours by solar phase; no interpolation, skybox or atmosphere.
       viewer.scene.backgroundColor=C.Color.fromCssColorString(Solar.skyColor(lastAstro.sun.alt));
       const colours={sun:'#ffc268',moon:'#c5c9ff',core:'#ee9bdc'};
       const names={sun:'Sun',moon:'Moon',core:'Core'};
