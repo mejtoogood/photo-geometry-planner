@@ -24,3 +24,12 @@
 .solar-swatch{display:inline-block;vertical-align:-2px;width:11px;height:11px;border:1px solid #ffffff5c;border-radius:2px;margin-right:7px;flex-shrink:0}
 .solar-table tbody tr.current-phase{background-color:#ffffff0e}
 .solar-table tbody tr.current-phase th{color:#fff;font-weight:750}
+
+/* v0.7 camera-view celestial direction indicators */
+.preview-celestials{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.preview-body{position:absolute;display:flex;align-items:center;gap:5px;transform:translate(-8px,-50%);white-space:nowrap;font-size:12px;font-weight:700;text-shadow:0 1px 3px #000,0 0 5px #000;z-index:5}
+.preview-body-dot{width:12px;height:12px;border:1px solid #fff9;border-radius:50%;box-shadow:0 0 0 2px #0007;flex:none}
+.preview-body-label{color:#eff3f8}
+.preview-sun .preview-body-label{color:#ffc268}
+.preview-moon .preview-body-label{color:#c5c9ff}
+.preview-core .preview-body-label{color:#ee9bdc}

@@ -42,3 +42,7 @@ The camera projection and astronomical visualisations still require browser test
 ## Solar-phase conventions
 
 A simplified solid-colour sky switches discretely at solar-altitude thresholds (it does not change terrain/3D-tile lighting). Civil twilight and blue hour overlap, and sunrise/sunset lie within golden hour, so the sky uses short civil (−6° to −5.5°) and horizon (−0.9° to +0.9°) colour bands. The table's established event times are unchanged. The blue-hour interval is Sun centre −6° to −4°, and golden hour is −4° to +6°. Civil (−6°), nautical (−12°), and astronomical (−18°) dawn/dusk events use Astronomy Engine's `SearchAltitude`; sunrise/sunset use `SearchRiseSet` (apparent upper limb and standard atmospheric refraction). The chosen local calendar date and manually entered UTC offset define the time table. Polar-day/night dates may have missing events.
+
+## Camera view consistency
+
+The camera preview now uses the **same forward/right/up orientation vectors** as the FOV geometry, including the selected roll. A 90° roll intentionally rotates the image sideways; use **Level camera (roll 0°)** to reset. Celestial locations in camera view are screen-space markers derived from angular direction, not line segments extending towards the sky shell. The shell and its 24-hour arcs continue to appear only in planning view. The outlined camera frame uses the selected sensor FOV and is calibrated to the Cesium viewport's margins.

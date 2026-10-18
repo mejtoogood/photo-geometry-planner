@@ -2,7 +2,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const C = window.Cesium;
-  if (!C || !window.Optics || !window.AstroDirections || !window.LensControls || !window.SkyShell || !window.SolarPhases) {
+  if (!C || !window.Optics || !window.AstroDirections || !window.LensControls || !window.SkyShell || !window.SolarPhases || !window.PreviewProjection) {
     $('status').textContent = 'Required script failed to load. Check CDN access and refresh.';
     $('status').classList.add('error');
     return;
@@ -10,6 +10,7 @@
   const L = window.LensControls;
   const S = window.SkyShell;
   const Solar = window.SolarPhases;
+  const Projection = window.PreviewProjection;
   const rad = C.Math.toRadians;
   const deg = C.Math.toDegrees;
 
@@ -246,6 +247,31 @@
       flush();
     }
   }
+  function drawPreviewCelestials(basis,op,colours,names) {
+    const layer=$('previewCelestials');
+    layer.replaceChildren();
+    // All markers use angular coordinates rather than physical 3D positions.
+    // Thus shell-radius changes cannot distort the camera-view overlay.
+    for(const key of ['sun','moon','core']){
+      if(!state['show'+names[key]])continue;
+      const data=lastAstro[key],dir=azAltVector(basis.enu,data.az,data.alt);
+      const coords=Projection.project(dir,basis,op.tanHalfH,op.tanHalfV);
+      if(!coords?.inside)continue;
+      const marker=document.createElement('div');
+      marker.className='preview-body preview-'+key;
+      marker.style.left=(coords.x*100).toFixed(5)+'%';
+      marker.style.top=(coords.y*100).toFixed(5)+'%';
+      marker.title=names[key]+' · Az '+fmt(data.az,1)+'° · Alt '+fmt(data.alt,1)+'°';
+      const dot=document.createElement('span');
+      dot.className='preview-body-dot';
+      dot.style.backgroundColor=colours[key];
+      const label=document.createElement('span');
+      label.className='preview-body-label';
+      label.textContent=names[key];
+      marker.append(dot,label);
+      layer.append(marker);
+    }
+  }
   function drawAstronomy(pos,basis,op) {
     try {
       const date=dateFromWall();lastAstro=window.AstroDirections.calculate(date,state.lat,state.lon,absoluteHeight());
@@ -262,13 +288,16 @@
         const inside=frameDirectionTest(dir,basis,op);
         html+=formatAstro(names[key],data,inside);
         const shouldShow=state['show'+names[key]];
-        if(!shouldShow)continue;
+        // Preview has its own angular overlay: no confusing long 3D rays or points.
+        if(preview || !shouldShow)continue;
         const colour=C.Color.fromCssColorString(colours[key]);
         const mark=add(pos,scaled(dir,markerRange));
         collect(line([pos,mark],colour.withAlpha(.63),2,false,state.celestialThroughTerrain));
         collect(pointLabel(mark,names[key],colour,state.celestialThroughTerrain));
       }
       $('astroReadout').innerHTML=html;
+      if(preview)drawPreviewCelestials(basis,op,colours,names);
+      else $('previewCelestials').replaceChildren();
     } catch(e) {
       $('astroReadout').textContent='Celestial calculation unavailable: '+e.message;
       console.error('Astronomy calculation',e);
@@ -325,18 +354,21 @@
     if(!drawPending){drawPending=true;requestAnimationFrame(draw);}
   }
   function viewFrustum() {
-    const aspect=viewer.canvas.clientWidth/Math.max(1,viewer.canvas.clientHeight);
-    const tanH=state.sensorWidth/(2*state.focal),tanV=state.sensorHeight/(2*state.focal);
-    const tanViewportH=Math.max(tanH,tanV*aspect);
-    const tanViewportV=Math.max(tanV,tanH/aspect);
-    const angle=aspect>=1 ? 2*Math.atan(tanViewportH):2*Math.atan(tanViewportV);
-    if (viewer.camera.frustum instanceof C.PerspectiveFrustum) viewer.camera.frustum.fov=angle;
-    $('cameraFrame').querySelector('.frame-inner').style.aspectRatio=`${state.sensorWidth} / ${state.sensorHeight}`;
+    const frame=$('cameraFrame').querySelector('.frame-inner');
+    frame.style.aspectRatio=`${state.sensorWidth} / ${state.sensorHeight}`;
+    const bounds=frame.getBoundingClientRect();
+    const w=viewer.canvas.clientWidth,h=viewer.canvas.clientHeight;
+    // The outlined camera frame represents exactly the specified sensor FOV;
+    // Cesium renders some extra margin outside the frame for UI context.
+    const angle=Projection.fovForFrame(state.sensorWidth,state.sensorHeight,state.focal,
+      w,h,bounds.width,bounds.height);
+    if(viewer.camera.frustum instanceof C.PerspectiveFrustum) viewer.camera.frustum.fov=angle;
   }
   function updatePreview() {
     if(!preview)return;
-    viewer.camera.setView({destination:locationCartesian(),orientation:{
-      heading:rad(state.heading),pitch:rad(state.pitch),roll:rad(state.roll)}});
+    const pos=locationCartesian(),basis=cameraVectors(pos);
+    // Use the same ENU-derived basis as the projection, including roll.
+    viewer.camera.setView({destination:pos,orientation:{direction:basis.f,up:basis.up}});
     viewFrustum();
   }
   function setPreview(active) {
@@ -354,6 +386,7 @@
         viewer.camera.frustum.fov=overviewPose.fov;}
     }
     $('cameraFrame').hidden=!preview;
+    if(!preview)$('previewCelestials').replaceChildren();
     $('previewBtn').classList.toggle('primary',preview);
     $('overviewBtn').classList.toggle('primary',!preview);
     schedule();
@@ -543,6 +576,11 @@
       if(presets[preset]){[state.sensorWidth,state.sensorHeight,state.coc]=presets[preset];
         for(const id of ['sensorWidth','sensorHeight','coc'])showField(id);}
       schedule();});
+    $('levelRollBtn').addEventListener('click',()=>{
+      state.roll=0;
+      $('roll').value=0;$('rollNumber').value=0;
+      schedule();
+    });
     for(const id of ['heading','pitch','roll']){
       $(id).addEventListener('input',()=>{state[id]=Number($(id).value);$(id+'Number').value=$(id).value;schedule();});
       $(id+'Number').addEventListener('change',()=>{const v=clamp(Number($(id+'Number').value),Number($(id).min),Number($(id).max));
@@ -603,7 +641,7 @@
       catch(e){status('Cannot import JSON: '+e.message,true);}
       $('importFile').value='';});
     $('resetBtn').addEventListener('click',()=>{state=sanitise(defaultState());renderFields();schedule();status('Configuration reset (ion token retained in browser).');});
-    window.addEventListener('resize',()=>{if(preview)viewFrustum();});
+    window.addEventListener('resize',()=>{if(preview){viewFrustum();viewer.scene.requestRender();}});
   }
   function initialise() {
     viewer=new C.Viewer('cesiumContainer',{
