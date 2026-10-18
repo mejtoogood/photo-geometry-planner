@@ -3,3 +3,8 @@
 
 /* v0.2 lens scrubbing and user target controls */
 .lens-range{grid-template-columns:100px minmax(70px,1fr) 76px;gap:9px;margin:13px 0}.lens-range label{font-weight:600}.lens-range select{padding:3px 4px!important;height:30px!important}.lens-range input[type=range]{min-width:0}.lens-range input[type=number]{text-align:right;font-variant-numeric:tabular-nums}#customTargetControls[hidden]{display:none}.maplegend{max-width:calc(100% - 24px)}
+
+/* v0.4 celestial shell controls */
+.sky-shell-range{grid-template-columns:102px minmax(60px,1fr) 99px;margin:12px 0 8px}
+.sky-shell-range output{font-variant-numeric:tabular-nums;text-align:right;color:#d5e3f4;white-space:nowrap;font-size:11px}
+.sky-shell-options{grid-template-columns:1fr}

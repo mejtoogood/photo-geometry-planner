@@ -2,12 +2,13 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const C = window.Cesium;
-  if (!C || !window.Optics || !window.AstroDirections || !window.LensControls) {
+  if (!C || !window.Optics || !window.AstroDirections || !window.LensControls || !window.SkyShell) {
     $('status').textContent = 'Required script failed to load. Check CDN access and refresh.';
     $('status').classList.add('error');
     return;
   }
   const L = window.LensControls;
+  const S = window.SkyShell;
   const rad = C.Math.toRadians;
   const deg = C.Math.toDegrees;
   const DAY_SKY=C.Color.fromCssColorString('#76b7e2');
@@ -22,6 +23,7 @@
     focal:50,aperture:5.6,focus:10,coc:.03,
     showFrustum:true,showDof:true,showFocus:true,showAxis:true,
     showSun:true,showMoon:true,showCore:true,showTrajectories:true,
+    celestialShellScale:S.DEFAULT_SCALE,celestialThroughTerrain:true,
     aimTarget:'sun',targetLat:-35.3000,targetLon:149.135,targetGround:575,targetAgl:1.6,
     utcOffset:tzHours,wallTime:'',timeStep:15,scene:'standard'
   });
@@ -45,6 +47,7 @@
     out.aimTarget=['sun','moon','core','custom'].includes(out.aimTarget)?out.aimTarget:'sun';
     out.heading=((out.heading%360)+360)%360;out.pitch=clamp(out.pitch,-89,89);
     out.roll=clamp(out.roll,-180,180);out.extent=clamp(out.extent,1,50000);
+    out.celestialShellScale=S.sanitiseScale(out.celestialShellScale);
     for (const k of ['sensorWidth','sensorHeight','focal','aperture','focus','coc']) if (out[k]<=0) out[k]=defaultState()[k];
     out.focal=clamp(out.focal,1,2000);out.aperture=L.apertures[L.apertureIndex(out.aperture)];
     out.focus=clamp(out.focus,Math.max(.01,out.focal/1000+.001),10000);
@@ -111,6 +114,7 @@
         `Near focus: <b>${fmt(o.near,2)} m</b> · Far: <b>${fmt(o.far,2)} m</b><br>`+
         `DOF: ${fmt(o.total,2)} m · Hyperfocal: ${fmt(o.hyperfocal,2)} m`;
     } catch(e){$('opticsReadout').textContent=e.message;}
+    $('celestialShellReadout').textContent=`${state.celestialShellScale.toLocaleString('en-AU',{maximumFractionDigits:1})}× · ${fmt(S.radius(state.extent,state.celestialShellScale),0)} m`;
     const when=dateFromWall();
     $('utcReadout').textContent=`UTC: ${when.toISOString().slice(0,16).replace('T',' ')} · Offset ${state.utcOffset>=0?'+':''}${state.utcOffset} h`;
   }
@@ -143,9 +147,13 @@
       add(center,scaled(basis.right,w),scaled(basis.up,h)),
       add(center,scaled(basis.right,-w),scaled(basis.up,h))];
   }
-  function line(points,color,width=2,dashed=false) {
-    return viewer.entities.add({polyline:{positions:points,width,
-      arcType:C.ArcType.NONE,material:dashed?new C.PolylineDashMaterialProperty({color}):color}});
+  function line(points,color,width=2,dashed=false,throughTerrain=false) {
+    const material=dashed?new C.PolylineDashMaterialProperty({color}):color;
+    const polyline={positions:points,width,arcType:C.ArcType.NONE,material};
+    // Draw the same directional line when it fails depth testing against terrain/3D tiles.
+    // Cesium depthFailMaterial can show artifacts on some WebGL implementations.
+    if(throughTerrain)polyline.depthFailMaterial=material;
+    return viewer.entities.add({polyline});
   }
   function polygon(points,color) {
     return viewer.entities.add({polygon:{hierarchy:new C.PolygonHierarchy(points),perPositionHeight:true,
@@ -165,13 +173,14 @@
     return Math.abs(C.Cartesian3.dot(direction,basis.right)/z)<=op.tanHalfH &&
       Math.abs(C.Cartesian3.dot(direction,basis.up)/z)<=op.tanHalfV;
   }
-  function pointLabel(pos,name,color) {
+  function pointLabel(pos,name,color,throughTerrain=true) {
+    const depthDistance=throughTerrain?Number.POSITIVE_INFINITY:0;
     return viewer.entities.add({position:pos,point:{pixelSize:13,color,
-      outlineWidth:2,outlineColor:C.Color.fromCssColorString('#0c1925'),disableDepthTestDistance:Number.POSITIVE_INFINITY},
+      outlineWidth:2,outlineColor:C.Color.fromCssColorString('#0c1925'),disableDepthTestDistance:depthDistance},
       label:{text:name,font:'bold 13px sans-serif',pixelOffset:new C.Cartesian2(12,-17),
         horizontalOrigin:C.HorizontalOrigin.LEFT,style:C.LabelStyle.FILL_AND_OUTLINE,
         outlineWidth:3,outlineColor:C.Color.fromCssColorString('#17202c'),fillColor:color,
-        disableDepthTestDistance:Number.POSITIVE_INFINITY}});
+        disableDepthTestDistance:depthDistance}});
   }
   function formatAstro(name,details,inside) {
     const shown=inside?' <span class="isIn">in FOV</span>':'';
@@ -199,7 +208,7 @@
       if(!state['show'+({sun:'Sun',moon:'Moon',core:'Core'})[key]])continue;
       const colour=C.Color.fromCssColorString(colours[key]);
       let segment=[],priorAbove=null;
-      function flush(){if(segment.length>1)collect(line(segment,colour.withAlpha(priorAbove?.45:.24),priorAbove?2.7:1.5,!priorAbove));segment=[];}
+      function flush(){if(segment.length>1)collect(line(segment,colour.withAlpha(priorAbove?.45:.24),priorAbove?2.7:1.5,!priorAbove,state.celestialThroughTerrain));segment=[];}
       for(const sample of paths[key]){
         const above=sample.alt>=0;
         const point=add(pos,scaled(azAltVector(basis.enu,sample.az,sample.alt),range));
@@ -217,7 +226,8 @@
       viewer.scene.backgroundColor=lastAstro.sun.alt>=0 ? DAY_SKY : C.Color.BLACK;
       const colours={sun:'#ffc268',moon:'#c5c9ff',core:'#ee9bdc'};
       const names={sun:'Sun',moon:'Moon',core:'Core'};
-      const markerRange=clamp(state.extent*.9,100,3000);
+      // An arbitrary camera-centred sky shell: its radius does not affect azimuth/altitude.
+      const markerRange=S.radius(state.extent,state.celestialShellScale);
       if(!preview)drawTrajectories(pos,basis,markerRange,colours);
       let html='';
       for (const key of ['sun','moon','core']) {
@@ -228,8 +238,8 @@
         if(!shouldShow)continue;
         const colour=C.Color.fromCssColorString(colours[key]);
         const mark=add(pos,scaled(dir,markerRange));
-        collect(line([pos,mark],colour.withAlpha(.63),2));
-        collect(pointLabel(mark,names[key],colour));
+        collect(line([pos,mark],colour.withAlpha(.63),2,false,state.celestialThroughTerrain));
+        collect(pointLabel(mark,names[key],colour,state.celestialThroughTerrain));
       }
       $('astroReadout').innerHTML=html;
     } catch(e) {
@@ -511,7 +521,11 @@
       $(id+'Number').addEventListener('change',()=>{const v=clamp(Number($(id+'Number').value),Number($(id).min),Number($(id).max));
         state[id]=v;$(id).value=v;$(id+'Number').value=v;schedule();});
     }
-    for(const id of ['showFrustum','showDof','showFocus','showAxis','showSun','showMoon','showCore','showTrajectories'])
+    $('celestialShellScale').addEventListener('input',()=>{
+      state.celestialShellScale=S.sanitiseScale(Number($('celestialShellScale').value));
+      schedule();
+    });
+    for(const id of ['showFrustum','showDof','showFocus','showAxis','showSun','showMoon','showCore','showTrajectories','celestialThroughTerrain'])
       $(id).addEventListener('change',()=>{state[id]=$(id).checked;schedule();});
     $('wallTime').addEventListener('change',()=>{
       if(!Number.isFinite(Date.parse($('wallTime').value)))return;

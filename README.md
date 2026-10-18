@@ -10,9 +10,10 @@ Experimental static 3D photographic geometry planner using CesiumJS and Astronom
 - Camera sensor presets (Nikon D850, Nikon FE, Nikon DX, Pentax 67) and configurable circle of confusion under **Camera format & optical assumptions**.
 - Aim at the Sun, Moon, galactic core, or a user-defined point. Custom target placement supports coordinate entry, map picking, and independent ground/AGL/AMSL height controls.
 - Astronomical directional markers and schematic 24-hour trajectories for each celestial object, with dashed below-horizon segments; date, time and UTC offset controls.
+- Celestial sky-shell radius is independently adjustable as a multiple of the projection extent (default 3×, with no 3 km cap). Markers and arcs can optionally render through obstructing terrain and 3D Tiles.
 - Local browser settings, shareable URLs and configuration JSON export/import.
 
-The trajectories are **directional diagrams on a nearby virtual sky shell**, not physical-distance orbital paths. Terrain elevations are approximate. The simulator makes no photorealistic exposure or obstruction claims.
+The trajectories are **directional diagrams on a virtual sky shell**, not physical-distance orbital paths. Its radius affects display distance but not astronomical azimuth/altitude or optical field of view. Showing celestial lines through terrain uses Cesium's `depthFailMaterial` and may exhibit GPU-dependent visual artifacts. Terrain elevations are approximate. The simulator makes no photorealistic exposure or obstruction claims.
 
 ## Hosting
 
@@ -30,6 +31,7 @@ With Node.js:
 node tests/optics.test.js
 node tests/controls.test.js
 node tests/ui.test.js
+node tests/sky-shell.test.js
 node --check app.js
 ```
 

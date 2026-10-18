@@ -7,19 +7,20 @@
   <title>Photo Geometry — 3D photography planner</title>
   <script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/';</script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Widgets/widgets.css">
-  <link rel="stylesheet" href="styles.css?v=2">
+  <link rel="stylesheet" href="styles.css?v=4">
   <script defer src="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Cesium.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
   <script defer src="optics.js?v=2"></script>
   <script defer src="astro.js?v=2"></script>
   <script defer src="controls.js?v=2"></script>
-  <script defer src="app.js?v=3"></script>
+  <script defer src="sky-shell.js?v=1"></script>
+  <script defer src="app.js?v=4"></script>
 </head>
 <body>
   <div class="app">
     <aside class="panel">
       <header>
-        <h1>Photo Geometry <small>v0.3</small></h1>
+        <h1>Photo Geometry <small>v0.4</small></h1>
         <p>3D camera field-of-view &amp; depth-of-field planner</p>
       </header>
       <div class="view-actions">
@@ -108,6 +109,13 @@
         <div id="utcReadout" class="hint"></div>
         <div class="checks"><label><input id="showSun" type="checkbox" checked> Sun</label><label><input id="showMoon" type="checkbox" checked> Moon</label><label><input id="showCore" type="checkbox" checked> Galactic core</label></div>
         <div class="checks"><label><input id="showTrajectories" type="checkbox" checked> 24-hour trajectory arcs</label></div>
+        <div class="rangegrid sky-shell-range">
+          <label for="celestialShellScale">Sky shell radius</label>
+          <input id="celestialShellScale" type="range" min="1.5" max="10" step="0.5" value="3">
+          <output id="celestialShellReadout" for="celestialShellScale">3× · 900 m</output>
+        </div>
+        <div class="checks sky-shell-options"><label><input id="celestialThroughTerrain" type="checkbox" checked> Show celestial markers and arcs through terrain</label></div>
+        <p class="hint">Sky shell radius = projection extent × selected scale. This only changes display distance; astronomical directions and FOV/DOF calculations remain unchanged.</p>
         <div id="astroReadout" class="astro-readout"></div>
         <p class="hint">Arcs represent celestial directions through the selected local day on a schematic sky shell. Dashed segments are below the astronomical horizon.</p>
         <p class="hint">Azimuth is clockwise from true north; altitude is relative to the astronomical horizon. UTC offset is explicit; change it for daylight saving or another region.</p>
