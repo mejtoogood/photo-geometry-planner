@@ -7,18 +7,19 @@
   <title>Photo Geometry — 3D photography planner</title>
   <script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/';</script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Widgets/widgets.css">
-  <link rel="stylesheet" href="styles.css?v=1">
+  <link rel="stylesheet" href="styles.css?v=2">
   <script defer src="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Cesium.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
-  <script defer src="optics.js?v=1"></script>
-  <script defer src="astro.js?v=1"></script>
-  <script defer src="app.js?v=1"></script>
+  <script defer src="optics.js?v=2"></script>
+  <script defer src="astro.js?v=2"></script>
+  <script defer src="controls.js?v=2"></script>
+  <script defer src="app.js?v=2"></script>
 </head>
 <body>
   <div class="app">
     <aside class="panel">
       <header>
-        <h1>Photo Geometry <small>v0.1</small></h1>
+        <h1>Photo Geometry <small>v0.2</small></h1>
         <p>3D camera field-of-view &amp; depth-of-field planner</p>
       </header>
       <div class="view-actions">
@@ -44,19 +45,23 @@
       </details>
 
       <details open>
-        <summary>2 · Camera &amp; optics</summary>
+        <summary>2 · Lens controls</summary>
+        <div class="rangegrid lens-range"><label for="focalSlider">Focal length (mm)</label><input id="focalSlider" type="range" min="0" max="1000" step="1"><input id="focal" type="number" min="1" max="2000" step="1" aria-label="Focal length in millimetres"></div>
+        <div class="rangegrid lens-range"><label for="apertureSlider">Aperture</label><input id="apertureSlider" type="range" min="0" max="39" step="1"><select id="aperture" aria-label="Aperture in f stops"></select></div>
+        <div class="rangegrid lens-range"><label for="focusSlider">Focus distance (m)</label><input id="focusSlider" type="range" min="0" max="1000" step="1"><input id="focus" type="number" min="0.01" max="10000" step="0.1" aria-label="Focus distance in metres"></div>
+        <div id="opticsReadout" class="readout"></div>
+      </details>
+
+      <details>
+        <summary>Camera format &amp; optical assumptions</summary>
         <label>Camera format
           <select id="cameraPreset"><option value="d850">Nikon D850 · FX</option><option value="fe">Nikon FE · 35 mm</option><option value="nikon-dx">Nikon DX</option><option value="p67">Pentax 67</option><option value="custom">Custom</option></select>
         </label>
         <div class="formgrid">
           <label>Sensor width (mm) <input id="sensorWidth" type="number" step="0.1" min="1"></label>
           <label>Sensor height (mm) <input id="sensorHeight" type="number" step="0.1" min="1"></label>
-          <label>Focal length (mm) <input id="focal" type="number" step="0.1" min="0.1"></label>
-          <label>Aperture (f/) <input id="aperture" type="number" step="0.1" min="0.5"></label>
-          <label>Focus distance (m) <input id="focus" type="number" step="any" min="0.01"></label>
-          <label>CoC (mm) <input id="coc" type="number" step="0.001" min="0.001"></label>
+          <label>Circle of confusion (mm) <input id="coc" type="number" step="0.001" min="0.001"></label>
         </div>
-        <div id="opticsReadout" class="readout"></div>
       </details>
 
       <details open>
@@ -70,7 +75,29 @@
       </details>
 
       <details open>
-        <summary>4 · Sun, Moon &amp; galactic core</summary>
+        <summary>4 · Point at target</summary>
+        <label>Target
+          <select id="aimTarget"><option value="sun">Sun</option><option value="moon">Moon</option><option value="core">Galactic core</option><option value="custom">User designated point</option></select>
+        </label>
+        <div class="buttons"><button id="aimTargetBtn" type="button" class="primary">Point at target</button></div>
+        <div id="customTargetControls" hidden>
+          <div class="formgrid">
+            <label>Target latitude (°) <input id="targetLat" type="number" min="-90" max="90" step="any"></label>
+            <label>Target longitude (°) <input id="targetLon" type="number" min="-180" max="180" step="any"></label>
+          </div>
+          <div class="buttons"><button id="targetCoordinatesBtn" type="button">Place at coordinates</button><button id="targetPickBtn" type="button">Click map to place target</button></div>
+          <label>Target ground elevation (m AMSL) <input id="targetGround" type="number" step="0.1"></label>
+          <div class="formgrid">
+            <label>Target height AGL (m) <input id="targetAgl" type="number" step="0.1"></label>
+            <label>Target elevation AMSL (m) <input id="targetAmsl" type="number" step="0.1"></label>
+          </div>
+          <div id="targetHeightSource" class="hint">Target ground elevation is approximate and manually adjustable.</div>
+          <div class="buttons"><button id="targetRefineGroundBtn" type="button">Resample target ground</button></div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>5 · Sun, Moon &amp; galactic core</summary>
         <label>Date and time <input id="wallTime" type="datetime-local" step="60"></label>
         <div class="formgrid">
           <label>UTC offset (hours) <input id="utcOffset" type="number" min="-12" max="14" step="0.25"></label>
@@ -80,7 +107,9 @@
         <label>Minutes through selected day <input id="timeSlider" type="range" min="0" max="1439" step="1"></label>
         <div id="utcReadout" class="hint"></div>
         <div class="checks"><label><input id="showSun" type="checkbox" checked> Sun</label><label><input id="showMoon" type="checkbox" checked> Moon</label><label><input id="showCore" type="checkbox" checked> Galactic core</label></div>
+        <div class="checks"><label><input id="showTrajectories" type="checkbox" checked> 24-hour trajectory arcs</label></div>
         <div id="astroReadout" class="astro-readout"></div>
+        <p class="hint">Arcs represent celestial directions through the selected local day on a schematic sky shell. Dashed segments are below the astronomical horizon.</p>
         <p class="hint">Azimuth is clockwise from true north; altitude is relative to the astronomical horizon. UTC offset is explicit; change it for daylight saving or another region.</p>
       </details>
 
@@ -98,7 +127,7 @@
     <main class="maparea">
       <div id="cesiumContainer"></div>
       <div id="cameraFrame" hidden><div class="frame-inner"><div class="crosshair">+</div><span>CAMERA FRAME · GEOMETRIC VIEW</span></div></div>
-      <div class="maphint">Left-drag orbit · Wheel zoom · Right-drag tilt · “Click map to place” arms point picking</div>
+      <div class="maphint">Left-drag orbit · Wheel zoom · Right-drag tilt · Placement buttons arm camera or target picking</div>
       <div class="maplegend"><span><i class="swatch fov"></i> FOV</span><span><i class="swatch dof"></i> DOF</span><span><i class="swatch sun"></i> Sun</span><span><i class="swatch moon"></i> Moon</span><span><i class="swatch core"></i> Galactic core</span></div>
     </main>
   </div>

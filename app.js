@@ -2,11 +2,12 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const C = window.Cesium;
-  if (!C || !window.Optics || !window.AstroDirections) {
+  if (!C || !window.Optics || !window.AstroDirections || !window.LensControls) {
     $('status').textContent = 'Required script failed to load. Check CDN access and refresh.';
     $('status').classList.add('error');
     return;
   }
+  const L = window.LensControls;
   const rad = C.Math.toRadians;
   const deg = C.Math.toDegrees;
   const clamp = (x, a, b) => Math.max(a,Math.min(b,x));
@@ -19,7 +20,8 @@
     cameraPreset:'d850',sensorWidth:35.9,sensorHeight:23.9,
     focal:50,aperture:5.6,focus:10,coc:.03,
     showFrustum:true,showDof:true,showFocus:true,showAxis:true,
-    showSun:true,showMoon:true,showCore:true,
+    showSun:true,showMoon:true,showCore:true,showTrajectories:true,
+    aimTarget:'sun',targetLat:-35.3000,targetLon:149.135,targetGround:575,targetAgl:1.6,
     utcOffset:tzHours,wallTime:'',timeStep:15,scene:'standard'
   });
   const schema = Object.keys(defaultState());
@@ -37,9 +39,14 @@
     }
     out.lat=clamp(out.lat,-90,90);out.lon=clamp(out.lon,-180,180);
     out.agl=clamp(out.agl,-5000,50000);out.ground=clamp(out.ground,-12000,20000);
+    out.targetLat=clamp(out.targetLat,-90,90);out.targetLon=clamp(out.targetLon,-180,180);
+    out.targetAgl=clamp(out.targetAgl,-5000,50000);out.targetGround=clamp(out.targetGround,-12000,20000);
+    out.aimTarget=['sun','moon','core','custom'].includes(out.aimTarget)?out.aimTarget:'sun';
     out.heading=((out.heading%360)+360)%360;out.pitch=clamp(out.pitch,-89,89);
     out.roll=clamp(out.roll,-180,180);out.extent=clamp(out.extent,1,50000);
     for (const k of ['sensorWidth','sensorHeight','focal','aperture','focus','coc']) if (out[k]<=0) out[k]=defaultState()[k];
+    out.focal=clamp(out.focal,1,2000);out.aperture=L.apertures[L.apertureIndex(out.aperture)];
+    out.focus=clamp(out.focus,Math.max(.01,out.focal/1000+.001),10000);
     out.utcOffset=clamp(out.utcOffset,-12,14);
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(out.wallTime) || !Number.isFinite(Date.parse(out.wallTime))) out.wallTime=defaultWall(out.utcOffset);
     out.scene=['standard','google'].includes(out.scene) ? out.scene : 'standard';
@@ -53,19 +60,31 @@
   const previous=(()=>{try{return JSON.parse(localStorage.getItem('photoGeometrySettings')||'null');}catch(e){return null;}})();
   let state=sanitise(readShared()||previous||{});
   let viewer=null, googleTiles=null, terrainProvider=null, terrainTask=null;
-  let overlays=[]; let preview=false, overviewPose=null, placing=false, drawPending=false;
-  let elevationRevision=0, lastAstro=null;
+  let overlays=[]; let preview=false, overviewPose=null, placing=null, drawPending=false;
+  let elevationRevision=0, targetElevationRevision=0, lastAstro=null, trajectoryCache=null;
   function status(message,error=false) {
     $('status').textContent=message;$('status').classList.toggle('error',error);
   }
   function persist() {localStorage.setItem('photoGeometrySettings',JSON.stringify(state));}
   function showField(id) {const val=state[id];$(id).value=typeof val==='number'?String(Number(val.toFixed(7))):val;}
+  function renderLensControls() {
+    $('focalSlider').value=L.focalToSlider(state.focal);$('focal').value=state.focal;
+    $('apertureSlider').value=L.apertureIndex(state.aperture);$('aperture').value=state.aperture;
+    $('focusSlider').value=L.focusToSlider(state.focus);$('focus').value=state.focus;
+  }
+  function renderTargetFields() {
+    $('targetLat').value=state.targetLat.toFixed(6);$('targetLon').value=state.targetLon.toFixed(6);
+    $('targetGround').value=Number(state.targetGround.toFixed(2));$('targetAgl').value=Number(state.targetAgl.toFixed(2));
+    $('targetAmsl').value=Number((state.targetGround+state.targetAgl).toFixed(2));
+    $('customTargetControls').hidden=state.aimTarget!=='custom';
+  }
   function renderFields() {
     for (const key of schema) {
       const el=$(key);if(!el)continue;
       if (el.type==='checkbox') el.checked=Boolean(state[key]);
       else el.value=String(state[key]);
     }
+    renderLensControls();renderTargetFields();
     $('headingNumber').value=state.heading;$('pitchNumber').value=state.pitch;$('rollNumber').value=state.roll;
     $('lat').value=state.lat.toFixed(6);$('lon').value=state.lon.toFixed(6);
     $('amsl').value=(state.ground+state.agl).toFixed(2);
@@ -96,6 +115,7 @@
   }
   const absoluteHeight=()=>state.ground+state.agl;
   const locationCartesian=()=>C.Cartesian3.fromDegrees(state.lon,state.lat,absoluteHeight());
+  const targetCartesian=()=>C.Cartesian3.fromDegrees(state.targetLon,state.targetLat,state.targetGround+state.targetAgl);
   function transform(position) {return C.Transforms.eastNorthUpToFixedFrame(position);}
   function add(...vecs) {let o=new C.Cartesian3(0,0,0);for(const v of vecs) o=C.Cartesian3.add(o,v,new C.Cartesian3());return o;}
   function scaled(v,d) {return C.Cartesian3.multiplyByScalar(v,d,new C.Cartesian3());}
@@ -157,12 +177,45 @@
     const phase=name==='Moon'?` · ${Math.round(details.phase*100)}% lit`:'';
     return `<div class="astro-line"><b>${name}</b><span>Az ${fmt(details.az,1)}° · Alt ${fmt(details.alt,1)}°${phase}${shown}</span><button type="button" data-aim="${name.toLowerCase()}">Aim</button></div>`;
   }
+  function localDayStartUtc() {
+    const [y,m,d]=state.wallTime.slice(0,10).split('-').map(Number);
+    return Date.UTC(y,m-1,d)-state.utcOffset*3600000;
+  }
+  function cachedTrajectories() {
+    const key=[state.lat,state.lon,absoluteHeight(),state.wallTime.slice(0,10),state.utcOffset].join('|');
+    if(trajectoryCache?.key===key)return trajectoryCache.paths;
+    const paths={sun:[],moon:[],core:[]},begin=localDayStartUtc();
+    for(let minutes=0;minutes<=1440;minutes+=15){
+      const data=window.AstroDirections.calculate(new Date(begin+minutes*60000),state.lat,state.lon,absoluteHeight());
+      for(const name of Object.keys(paths)) paths[name].push(data[name]);
+    }
+    trajectoryCache={key,paths};return paths;
+  }
+  function drawTrajectories(pos,basis,range,colours) {
+    if(!state.showTrajectories)return;
+    const paths=cachedTrajectories();
+    for(const key of ['sun','moon','core']) {
+      if(!state['show'+({sun:'Sun',moon:'Moon',core:'Core'})[key]])continue;
+      const colour=C.Color.fromCssColorString(colours[key]);
+      let segment=[],priorAbove=null;
+      function flush(){if(segment.length>1)collect(line(segment,colour.withAlpha(priorAbove?.45:.24),priorAbove?2.7:1.5,!priorAbove));segment=[];}
+      for(const sample of paths[key]){
+        const above=sample.alt>=0;
+        const point=add(pos,scaled(azAltVector(basis.enu,sample.az,sample.alt),range));
+        if(priorAbove!==null && priorAbove!==above){const prev=segment.at(-1);flush();segment=prev?[prev,point]:[point];}
+        else segment.push(point);
+        priorAbove=above;
+      }
+      flush();
+    }
+  }
   function drawAstronomy(pos,basis,op) {
     try {
       const date=dateFromWall();lastAstro=window.AstroDirections.calculate(date,state.lat,state.lon,absoluteHeight());
       const colours={sun:'#ffc268',moon:'#c5c9ff',core:'#ee9bdc'};
       const names={sun:'Sun',moon:'Moon',core:'Core'};
       const markerRange=clamp(state.extent*.9,100,3000);
+      if(!preview)drawTrajectories(pos,basis,markerRange,colours);
       let html='';
       for (const key of ['sun','moon','core']) {
         const data=lastAstro[key],dir=azAltVector(basis.enu,data.az,data.alt);
@@ -194,6 +247,12 @@
       collect(pointLabel(pos,'Camera',C.Color.WHITE));
       const base=C.Cartesian3.fromDegrees(state.lon,state.lat,state.ground);
       collect(line([base,pos],C.Color.WHITE.withAlpha(.55),2,true));
+      if(state.aimTarget==='custom'){
+        const target=targetCartesian(),accent=C.Color.fromCssColorString('#ffa875');
+        collect(pointLabel(target,'Target',accent));
+        collect(line([C.Cartesian3.fromDegrees(state.targetLon,state.targetLat,state.targetGround),target],accent.withAlpha(.7),2,true));
+        collect(line([pos,target],accent.withAlpha(.45),1.6,true));
+      }
       const end=cornersAt(pos,basis,dist,op),start=cornersAt(pos,basis,tip,op);
       if(state.showFrustum){
         const blue=C.Color.fromCssColorString('#60d0f2');
@@ -275,38 +334,51 @@
     return terrainTask;
   }
   function ionToken() {return $('ionToken').value.trim();}
-  async function sampleGround({pickedHeight=null}={}) {
-    const sequence=++elevationRevision;
+  async function sampleGround({pickedHeight=null,target=false}={}) {
+    const sequence=target?++targetElevationRevision:++elevationRevision;
+    const stillCurrent=()=>sequence===(target?targetElevationRevision:elevationRevision);
+    const latitude=target?state.targetLat:state.lat,longitude=target?state.targetLon:state.lon;
+    const groundKey=target?'targetGround':'ground';
+    const aglKey=target?'targetAgl':'agl';
+    const groundId=target?'targetGround':'ground',amslId=target?'targetAmsl':'amsl';
+    const sourceId=target?'targetHeightSource':'heightSource';
     const provider=await ensureTerrain();
-    if(sequence!==elevationRevision)return;
+    if(!stillCurrent())return;
     if(provider){
       try{
-        const arr=await C.sampleTerrainMostDetailed(provider,[C.Cartographic.fromDegrees(state.lon,state.lat)]);
-        if(sequence!==elevationRevision)return;
-        if(Number.isFinite(arr[0].height)){
-          state.ground=arr[0].height;
-          $('ground').value=Number(state.ground.toFixed(2));
-          $('amsl').value=Number(absoluteHeight().toFixed(2));
-          $('heightSource').textContent='Ground: Cesium World Terrain sample (estimated bare-earth elevation).';
-          status('Ground elevation sampled. Camera position updated.');schedule();return;
+        const arr=await C.sampleTerrainMostDetailed(provider,[C.Cartographic.fromDegrees(longitude,latitude)]);
+        if(!stillCurrent())return;
+        if(Number.isFinite(arr[0]?.height)){
+          state[groundKey]=arr[0].height;
+          $(groundId).value=Number(state[groundKey].toFixed(2));
+          $(amslId).value=Number((state[groundKey]+state[aglKey]).toFixed(2));
+          $(sourceId).textContent='Ground: Cesium World Terrain sample (estimated bare-earth elevation).';
+          status(target?'Target ground sampled.':'Camera ground sampled.');schedule();return;
         }
       }catch(e){console.warn('Terrain sampling failed',e);}
     }
     if(Number.isFinite(pickedHeight)){
-      state.ground=pickedHeight;
-      $('ground').value=Number(state.ground.toFixed(2));
-      $('amsl').value=Number(absoluteHeight().toFixed(2));
-      $('heightSource').textContent='Fallback: picked mesh surface (may be a roof or tree, not bare earth).';
-      status('Used picked surface height; manually adjust if necessary.');schedule();return;
+      state[groundKey]=pickedHeight;
+      $(groundId).value=Number(state[groundKey].toFixed(2));
+      $(amslId).value=Number((state[groundKey]+state[aglKey]).toFixed(2));
+      $(sourceId).textContent='Fallback: picked mesh surface (may be roof/tree rather than ground).';
+      status('Used picked surface height; adjust if necessary.');schedule();return;
     }
-    $('heightSource').textContent='Ground height unchanged: unable to sample terrain. Set it manually or provide an ion token.';
-    status('Camera placed. Terrain unavailable; existing ground estimate retained.');
+    $(sourceId).textContent='Ground unchanged: terrain sampling unavailable. Adjust elevation manually.';
+    status((target?'Target':'Camera')+' placed; using existing ground estimate.');
   }
   function place(lat,lon,pickedHeight=null,reframe=false){
     if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180){status('Invalid latitude/longitude.',true);return;}
+    ++elevationRevision;
     state.lat=lat;state.lon=lon;
     $('lat').value=lat.toFixed(6);$('lon').value=lon.toFixed(6);
     schedule();if(reframe)flyToCamera();sampleGround({pickedHeight});
+  }
+  function placeTarget(lat,lon,pickedHeight=null){
+    if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180){status('Invalid target latitude/longitude.',true);return;}
+    ++targetElevationRevision;
+    state.targetLat=lat;state.targetLon=lon;
+    renderTargetFields();schedule();sampleGround({pickedHeight,target:true});
   }
   function getClickPosition(screen) {
     const picked=viewer.scene.pick(screen);
@@ -318,13 +390,25 @@
     if(!p)p=viewer.camera.pickEllipsoid(screen,C.Ellipsoid.WGS84);
     return p;
   }
+  function armPlacement(kind) {
+    if(preview)setPreview(false);
+    placing=placing===kind?null:kind;
+    $('pickBtn').classList.toggle('armed',placing==='camera');
+    $('targetPickBtn').classList.toggle('armed',placing==='target');
+    $('pickBtn').textContent=placing==='camera'?'Cancel camera placement':'Click map to place';
+    $('targetPickBtn').textContent=placing==='target'?'Cancel target placement':'Click map to place target';
+    status(placing?`Click a location in the scene for the ${placing}.`:'Map placement cancelled.');
+  }
   function onPlace(screen) {
     if(!placing||preview)return;
-    const p=getClickPosition(screen);
-    placing=false;$('pickBtn').classList.remove('armed');$('pickBtn').textContent='Click map to place';
+    const kind=placing,p=getClickPosition(screen);
+    placing=null;
+    $('pickBtn').classList.remove('armed');$('pickBtn').textContent='Click map to place';
+    $('targetPickBtn').classList.remove('armed');$('targetPickBtn').textContent='Click map to place target';
     if(!p){status('No terrain/mesh hit. Try another visible surface.',true);return;}
     const carto=C.Cartographic.fromCartesian(p);
-    place(deg(carto.latitude),deg(carto.longitude),carto.height);
+    if(kind==='target')placeTarget(deg(carto.latitude),deg(carto.longitude),carto.height);
+    else place(deg(carto.latitude),deg(carto.longitude),carto.height);
   }
   async function enableGoogle() {
     const token=ionToken();
@@ -347,32 +431,73 @@
     state.scene='standard';status('Standard map active.');schedule();
   }
   function aim(key){
-    if(!lastAstro?.[key])return;
-    state.heading=lastAstro[key].az;
-    state.pitch=clamp(lastAstro[key].alt,-89,89);
-    $('heading').value=state.heading.toFixed(1);$('headingNumber').value=state.heading.toFixed(1);
-    $('pitch').value=state.pitch.toFixed(1);$('pitchNumber').value=state.pitch.toFixed(1);
-    schedule();
+    let az,alt;
+    if(key==='custom'){
+      const camera=locationCartesian(),target=targetCartesian();
+      const diff=C.Cartesian3.subtract(target,camera,new C.Cartesian3());
+      if(C.Cartesian3.magnitude(diff)<.01){status('Target and camera are at the same position.',true);return;}
+      const frame=transform(camera);
+      const east=localToWorld(frame,new C.Cartesian3(1,0,0));
+      const north=localToWorld(frame,new C.Cartesian3(0,1,0));
+      const up=localToWorld(frame,new C.Cartesian3(0,0,1));
+      const e=C.Cartesian3.dot(diff,east),n=C.Cartesian3.dot(diff,north),u=C.Cartesian3.dot(diff,up);
+      az=(deg(Math.atan2(e,n))+360)%360;
+      alt=deg(Math.atan2(u,Math.hypot(e,n)));
+    }else{
+      try {
+        const details=window.AstroDirections.calculate(dateFromWall(),state.lat,state.lon,absoluteHeight());
+        az=details[key].az;alt=details[key].alt;
+      }catch(e){status('Unable to aim: '+e.message,true);return;}
+    }
+    state.heading=az;
+    state.pitch=clamp(alt,-89,89);
+    $('heading').value=state.heading;$('headingNumber').value=Number(state.heading.toFixed(2));
+    $('pitch').value=state.pitch;$('pitchNumber').value=Number(state.pitch.toFixed(2));
+    schedule();status('Pointed camera at '+(key==='custom'?'user target':key)+'.');
+  }
+  function updateLens(id,value){
+    if(!Number.isFinite(value)||value<=0){renderLensControls();return;}
+    if(id==='focal')state.focal=clamp(value,1,2000);
+    else if(id==='focus')state.focus=clamp(value,.01,10000);
+    else if(id==='aperture')state.aperture=L.apertures[L.apertureIndex(value)];
+    // The near focus limit must be beyond the focal length for our thin-lens model.
+    if(state.focus<=state.focal/1000)state.focus=Math.min(10000,Number((state.focal/1000+.01).toFixed(3)));
+    renderLensControls();schedule();
   }
   function updateNumber(id){const el=$(id),n=Number(el.value);if(el.value===''||!Number.isFinite(n))return;
     const min=el.min!==''?Number(el.min):-Infinity,max=el.max!==''?Number(el.max):Infinity;
     state[id]=clamp(n,min,max);
     if(id==='ground'||id==='agl')$('amsl').value=Number(absoluteHeight().toFixed(2));
+    if(id==='targetGround'||id==='targetAgl')$('targetAmsl').value=Number((state.targetGround+state.targetAgl).toFixed(2));
     if(id==='sensorWidth'||id==='sensorHeight'||id==='coc')state.cameraPreset='custom';
     if(['sensorWidth','sensorHeight','coc'].includes(id))$('cameraPreset').value='custom';
     schedule();}
   function wire() {
     for(const id of ['lat','lon']) $(id).addEventListener('keydown',e=>{if(e.key==='Enter')$('coordinatesBtn').click();});
     $('coordinatesBtn').addEventListener('click',()=>place(Number($('lat').value),Number($('lon').value),null,true));
-    $('pickBtn').addEventListener('click',()=>{if(preview)setPreview(false);
-      placing=!placing;$('pickBtn').classList.toggle('armed',placing);
-      $('pickBtn').textContent=placing?'Cancel map placement':'Click map to place';
-      status(placing?'Click on a location in the 3D scene.':'Map placement cancelled.');});
-    for(const id of ['ground','agl']) $(id).addEventListener('change',()=>{elevationRevision++;updateNumber(id);
-      $('heightSource').textContent='Ground/height adjusted manually.';});
+    $('pickBtn').addEventListener('click',()=>armPlacement('camera'));
+    $('targetPickBtn').addEventListener('click',()=>armPlacement('target'));
+    for(const id of ['ground','agl','targetGround','targetAgl']) $(id).addEventListener('change',()=>{
+      if(id.startsWith('target'))targetElevationRevision++;else elevationRevision++;
+      updateNumber(id);
+      $(id.startsWith('target')?'targetHeightSource':'heightSource').textContent='Ground/height adjusted manually.';
+    });
     $('amsl').addEventListener('change',()=>{const n=Number($('amsl').value);if(!Number.isFinite(n))return;
-      state.agl=n-state.ground;$('agl').value=Number(state.agl.toFixed(2));schedule();});
-    for(const id of ['sensorWidth','sensorHeight','focal','aperture','focus','coc','extent'])$(id).addEventListener('change',()=>updateNumber(id));
+      elevationRevision++;state.agl=n-state.ground;$('agl').value=Number(state.agl.toFixed(2));schedule();});
+    $('targetAmsl').addEventListener('change',()=>{const n=Number($('targetAmsl').value);if(!Number.isFinite(n))return;
+      targetElevationRevision++;state.targetAgl=n-state.targetGround;$('targetAgl').value=Number(state.targetAgl.toFixed(2));schedule();});
+    for(const id of ['sensorWidth','sensorHeight','coc','extent'])$(id).addEventListener('change',()=>updateNumber(id));
+    $('focalSlider').addEventListener('input',()=>updateLens('focal',L.focalFromSlider($('focalSlider').value)));
+    $('focusSlider').addEventListener('input',()=>updateLens('focus',L.focusFromSlider($('focusSlider').value)));
+    $('apertureSlider').addEventListener('input',()=>updateLens('aperture',L.apertures[Number($('apertureSlider').value)]));
+    $('focal').addEventListener('change',()=>updateLens('focal',Number($('focal').value)));
+    $('focus').addEventListener('change',()=>updateLens('focus',Number($('focus').value)));
+    $('aperture').addEventListener('change',()=>updateLens('aperture',Number($('aperture').value)));
+    $('aimTarget').addEventListener('change',()=>{state.aimTarget=$('aimTarget').value;renderTargetFields();schedule();});
+    $('aimTargetBtn').addEventListener('click',()=>aim(state.aimTarget));
+    for(const id of ['targetLat','targetLon'])$(id).addEventListener('keydown',e=>{if(e.key==='Enter')$('targetCoordinatesBtn').click();});
+    $('targetCoordinatesBtn').addEventListener('click',()=>placeTarget(Number($('targetLat').value),Number($('targetLon').value)));
+    $('targetRefineGroundBtn').addEventListener('click',()=>sampleGround({target:true}));
     $('cameraPreset').addEventListener('change',()=>{
       const preset=$('cameraPreset').value;state.cameraPreset=preset;
       if(presets[preset]){[state.sensorWidth,state.sensorHeight,state.coc]=presets[preset];
@@ -383,7 +508,7 @@
       $(id+'Number').addEventListener('change',()=>{const v=clamp(Number($(id+'Number').value),Number($(id).min),Number($(id).max));
         state[id]=v;$(id).value=v;$(id+'Number').value=v;schedule();});
     }
-    for(const id of ['showFrustum','showDof','showFocus','showAxis','showSun','showMoon','showCore'])
+    for(const id of ['showFrustum','showDof','showFocus','showAxis','showSun','showMoon','showCore','showTrajectories'])
       $(id).addEventListener('change',()=>{state[id]=$(id).checked;schedule();});
     $('wallTime').addEventListener('change',()=>{
       if(!Number.isFinite(Date.parse($('wallTime').value)))return;
@@ -444,6 +569,8 @@
     viewer.screenSpaceEventHandler.setInputAction(e=>onPlace(e.position),C.ScreenSpaceEventType.LEFT_CLICK);
     const existing=localStorage.getItem('photoGeometryIonToken')||localStorage.getItem('cesiumIonToken')||'';
     $('ionToken').value=existing;
+    $('apertureSlider').max=String(L.apertures.length-1);
+    for(const f of L.apertures){const option=document.createElement('option');option.value=f;option.textContent='f/'+f;$('aperture').append(option);}
     wire();renderFields();draw();
     status('Ready. Place a camera by clicking the map or entering coordinates.');
     if(existing){
