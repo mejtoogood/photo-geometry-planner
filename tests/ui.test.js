@@ -6,7 +6,7 @@ const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
 const app=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
 const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]);
 assert.equal(ids.length,new Set(ids).size,'HTML IDs must be unique');
-for (const required of ['focalSlider','apertureSlider','focusSlider','targetLat','targetLon','targetGround','targetAgl','targetAmsl','targetPickBtn','aimTarget','aimTargetBtn','showTrajectories','celestialShellScale','celestialShellReadout','celestialThroughTerrain','solarEventsBody','solarPhaseReadout','previewCelestials','levelRollBtn'])
+for (const required of ['focalSlider','apertureSlider','focusSlider','targetLat','targetLon','targetGround','targetAgl','targetAmsl','targetPickBtn','aimTarget','aimTargetBtn','showTrajectories','celestialShellScale','celestialShellReadout','celestialThroughTerrain','solarEventsBody','solarPhaseReadout','previewCelestials','levelRollBtn','previewHint','previewLevelBtn','projectionModeNote'])
   assert.ok(ids.includes(required),`Missing ${required}`);
 for(const match of app.matchAll(/\$\('([^']+)'\)/g)){
   assert.ok(ids.includes(match[1]),`JavaScript references missing HTML element: ${match[1]}`);
@@ -24,5 +24,8 @@ assert.ok(app.includes('Solar.skyColor(lastAstro.sun.alt)'), 'Solar phase must c
 assert.ok(app.includes('Solar.PHASE_COLORS[row.key]'), 'Every solar table row must show its sky colour');
 assert.ok(!app.includes('lastAstro.sun.alt>=0 ? DAY_SKY : C.Color.BLACK'), 'Old binary sky must be removed');
 assert.ok(app.includes("if(preview || !shouldShow)continue;"),'No 3D celestial lines in camera view');
+assert.ok(app.includes("if(shortRange)boxFaces(start,end"),'Large FOV polygon surfaces must not render');
+assert.ok(app.includes("if(shortRange)boxFaces(from,to"),'Large DOF volume surfaces must not render');
+assert.ok(!app.includes("collect(line([pos,mark]"),'Do not render long physical sightlines to celestial markers');
 assert.ok(app.includes("orientation:{direction:basis.f,up:basis.up}"),'Preview camera uses optical frustum basis');
 console.log('UI references tests passed');

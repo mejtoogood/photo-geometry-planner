@@ -16,6 +16,7 @@
 
   const clamp = (x, a, b) => Math.max(a,Math.min(b,x));
   const fmt = (x,d=1) => Number.isFinite(x) ? x.toLocaleString('en-AU',{maximumFractionDigits:d,minimumFractionDigits:d}) : '∞';
+  const SOLID_GEOMETRY_LIMIT_M=1000; // Avoid enormous translucent polygons across 3D Tiles.
   const presets = {d850:[35.9,23.9,.03],fe:[36,24,.03], 'nikon-dx':[23.5,15.6,.02],p67:[70,56,.05]};
   const tzHours = -new Date().getTimezoneOffset()/60;
   const defaultState = () => ({
@@ -117,6 +118,9 @@
         `DOF: ${fmt(o.total,2)} m · Hyperfocal: ${fmt(o.hyperfocal,2)} m`;
     } catch(e){$('opticsReadout').textContent=e.message;}
     $('celestialShellReadout').textContent=`${state.celestialShellScale.toLocaleString('en-AU',{maximumFractionDigits:1})}× · ${fmt(S.radius(state.extent,state.celestialShellScale),0)} m`;
+    $('projectionModeNote').textContent=state.extent>SOLID_GEOMETRY_LIMIT_M
+      ? 'Long-range projection: outlines only. Filled volumes are hidden beyond 1 km to avoid covering the terrain.'
+      : 'Short-range projection: translucent FOV, DOF and focus surfaces are enabled.';
     const when=dateFromWall();
     $('utcReadout').textContent=`UTC: ${when.toISOString().slice(0,16).replace('T',' ')} · Offset ${state.utcOffset>=0?'+':''}${state.utcOffset} h`;
     renderSolarEvents();
@@ -201,9 +205,9 @@
     return Math.abs(C.Cartesian3.dot(direction,basis.right)/z)<=op.tanHalfH &&
       Math.abs(C.Cartesian3.dot(direction,basis.up)/z)<=op.tanHalfV;
   }
-  function pointLabel(pos,name,color,throughTerrain=true) {
+  function pointLabel(pos,name,color,throughTerrain=true,selected=false) {
     const depthDistance=throughTerrain?Number.POSITIVE_INFINITY:0;
-    return viewer.entities.add({position:pos,point:{pixelSize:13,color,
+    return viewer.entities.add({position:pos,point:{pixelSize:selected?17:13,color,
       outlineWidth:2,outlineColor:C.Color.fromCssColorString('#0c1925'),disableDepthTestDistance:depthDistance},
       label:{text:name,font:'bold 13px sans-serif',pixelOffset:new C.Cartesian2(12,-17),
         horizontalOrigin:C.HorizontalOrigin.LEFT,style:C.LabelStyle.FILL_AND_OUTLINE,
@@ -292,8 +296,9 @@
         if(preview || !shouldShow)continue;
         const colour=C.Color.fromCssColorString(colours[key]);
         const mark=add(pos,scaled(dir,markerRange));
-        collect(line([pos,mark],colour.withAlpha(.63),2,false,state.celestialThroughTerrain));
-        collect(pointLabel(mark,names[key],colour,state.celestialThroughTerrain));
+        // Celestial markers indicate angular direction, not a physical sightline.
+        // Their all-day trajectories are drawn above; avoid 100 km marker rays.
+        collect(pointLabel(mark,names[key],colour,state.celestialThroughTerrain,state.aimTarget===key));
       }
       $('astroReadout').innerHTML=html;
       if(preview)drawPreviewCelestials(basis,op,colours,names);
@@ -323,11 +328,12 @@
         collect(line([pos,target],accent.withAlpha(.45),1.6,true));
       }
       const end=cornersAt(pos,basis,dist,op),start=cornersAt(pos,basis,tip,op);
+      const shortRange=dist<=SOLID_GEOMETRY_LIMIT_M;
       if(state.showFrustum){
         const blue=C.Color.fromCssColorString('#60d0f2');
         outline(end,blue,2.6);outline(start,blue.withAlpha(.7),1.2);
         for(let i=0;i<4;i++)collect(line([pos,end[i]],blue.withAlpha(.9),1.5));
-        boxFaces(start,end,blue.withAlpha(.025));
+        if(shortRange)boxFaces(start,end,blue.withAlpha(.025));
       }
       if(state.showAxis)collect(line([pos,add(pos,scaled(basis.f,dist))],C.Color.WHITE.withAlpha(.8),2,true));
       const near=op.near,far=Math.min(op.far,dist);
@@ -335,12 +341,13 @@
         const from=cornersAt(pos,basis,Math.max(.05,near),op);
         const to=cornersAt(pos,basis,far,op);
         const green=C.Color.fromCssColorString('#5de2aa');
-        boxFaces(from,to,green.withAlpha(.1));
+        if(shortRange)boxFaces(from,to,green.withAlpha(.1));
         outline(from,green,3);outline(to,green.withAlpha(.75),3);
+        if(!shortRange)for(let i=0;i<4;i++)collect(line([from[i],to[i]],green.withAlpha(.55),1));
       }
       if(state.showFocus && state.focus<=dist){
         const focusCorners=cornersAt(pos,basis,state.focus,op);
-        collect(polygon(focusCorners,C.Color.fromCssColorString('#ffdf74').withAlpha(.14)));
+        if(shortRange)collect(polygon(focusCorners,C.Color.fromCssColorString('#ffdf74').withAlpha(.14)));
         outline(focusCorners,C.Color.fromCssColorString('#ffdf74'),2);
       }
     }
@@ -386,6 +393,7 @@
         viewer.camera.frustum.fov=overviewPose.fov;}
     }
     $('cameraFrame').hidden=!preview;
+    $('previewHint').hidden=!preview;
     if(!preview)$('previewCelestials').replaceChildren();
     $('previewBtn').classList.toggle('primary',preview);
     $('overviewBtn').classList.toggle('primary',!preview);
@@ -577,6 +585,11 @@
         for(const id of ['sensorWidth','sensorHeight','coc'])showField(id);}
       schedule();});
     $('levelRollBtn').addEventListener('click',()=>{
+      state.roll=0;
+      $('roll').value=0;$('rollNumber').value=0;
+      schedule();
+    });
+    $('previewLevelBtn').addEventListener('click',()=>{
       state.roll=0;
       $('roll').value=0;$('rollNumber').value=0;
       schedule();

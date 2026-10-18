@@ -33,3 +33,8 @@
 .preview-sun .preview-body-label{color:#ffc268}
 .preview-moon .preview-body-label{color:#c5c9ff}
 .preview-core .preview-body-label{color:#ee9bdc}
+
+/* v0.8 long-distance outline mode and preview roll reminder */
+.preview-hint{position:absolute;top:12px;left:12px;z-index:1;background:#101922e8;border:1px solid #47617b;border-radius:5px;padding:8px 10px;color:#d6e4f3;font-size:12px;max-width:calc(100% - 100px)}
+.preview-hint[hidden]{display:none}
+.preview-hint button{color:#c5e8ff;background:#235476;border:1px solid #4b82a9;border-radius:4px;padding:4px 9px;font-size:12px;cursor:pointer;margin-left:8px}

@@ -7,7 +7,7 @@
   <title>Photo Geometry — 3D photography planner</title>
   <script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/';</script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Widgets/widgets.css">
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
   <script defer src="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Cesium.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
   <script defer src="optics.js?v=2"></script>
@@ -16,13 +16,13 @@
   <script defer src="sky-shell.js?v=1"></script>
   <script defer src="solar-phases.js?v=2"></script>
   <script defer src="preview-projection.js?v=1"></script>
-  <script defer src="app.js?v=7"></script>
+  <script defer src="app.js?v=8"></script>
 </head>
 <body>
   <div class="app">
     <aside class="panel">
       <header>
-        <h1>Photo Geometry <small>v0.7</small></h1>
+        <h1>Photo Geometry <small>v0.8</small></h1>
         <p>3D camera field-of-view &amp; depth-of-field planner</p>
       </header>
       <div class="view-actions">
@@ -75,6 +75,7 @@
         <div class="buttons"><button id="levelRollBtn" type="button">Level camera (roll 0°)</button></div>
         <p class="hint">Roll rotates the camera around its optical axis. A 90° roll produces a sideways view.</p>
         <label>Projection extent (m) <input id="extent" type="number" min="1" max="50000" step="1"></label>
+        <div id="projectionModeNote" class="hint" role="note"></div>
         <div class="checks"><label><input id="showFrustum" type="checkbox" checked> FOV frustum</label><label><input id="showDof" type="checkbox" checked> DOF volume</label><label><input id="showFocus" type="checkbox" checked> Focus plane</label><label><input id="showAxis" type="checkbox" checked> Optical axis</label></div>
         <p class="hint">Frustum is geometrical. DOF uses a conventional thin-lens / CoC threshold, not a blur simulation.</p>
       </details>
@@ -147,6 +148,9 @@
     </aside>
     <main class="maparea">
       <div id="cesiumContainer"></div>
+      <div id="previewHint" class="preview-hint" hidden>
+        Camera view uses the selected roll. <button id="previewLevelBtn" type="button">Level roll to 0°</button>
+      </div>
       <div id="cameraFrame" hidden><div class="frame-inner"><div class="crosshair">+</div><div id="previewCelestials" class="preview-celestials" aria-label="Celestial positions in the camera frame"></div><span>CAMERA FRAME · GEOMETRIC VIEW</span></div></div>
       <div class="maphint">Left-drag orbit · Wheel zoom · Right-drag tilt · Placement buttons arm camera or target picking</div>
       <div class="maplegend"><span><i class="swatch fov"></i> FOV</span><span><i class="swatch dof"></i> DOF</span><span><i class="swatch sun"></i> Sun</span><span><i class="swatch moon"></i> Moon</span><span><i class="swatch core"></i> Galactic core</span></div>

@@ -46,3 +46,7 @@ A simplified solid-colour sky switches discretely at solar-altitude thresholds (
 ## Camera view consistency
 
 The camera preview now uses the **same forward/right/up orientation vectors** as the FOV geometry, including the selected roll. A 90° roll intentionally rotates the image sideways; use **Level camera (roll 0°)** to reset. Celestial locations in camera view are screen-space markers derived from angular direction, not line segments extending towards the sky shell. The shell and its 24-hour arcs continue to appear only in planning view. The outlined camera frame uses the selected sensor FOV and is calibrated to the Cesium viewport's margins.
+
+## Long-distance planning view
+
+For projection extents above **1 km**, the tool switches automatically to wireframe geometry. Extremely large translucent polygons across a Google Photorealistic 3D scene previously obscured the terrain. The FOV extent, optical calculations, and focus distances are unchanged, but the projected FOV/DOF/focus surfaces are drawn as outlines only. Schematic celestial markers and the 24-hour trajectory arcs remain visible; redundant rays extending all the way from the camera to each celestial marker are removed. Camera view uses a separate angle-based overlay and now includes a visible roll-reset button. Roll set to 90° intentionally rotates the image sideways.
