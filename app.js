@@ -423,30 +423,60 @@
     const aglKey=target?'targetAgl':'agl';
     const groundId=target?'targetGround':'ground',amslId=target?'targetAmsl':'amsl';
     const sourceId=target?'targetHeightSource':'heightSource';
+    const useGoogleMesh=state.scene==='google' && !!googleTiles?.show;
+    function applyHeight(height,source) {
+      if(!stillCurrent()||!Number.isFinite(height))return false;
+      state[groundKey]=height;
+      $(groundId).value=Number(height.toFixed(2));
+      $(amslId).value=Number((height+state[aglKey]).toFixed(2));
+      $(sourceId).textContent=source;
+      schedule();
+      return true;
+    }
+    if(useGoogleMesh){
+      // When placing by clicking Google 3D, the picked surface is authoritative.
+      // World Terrain can differ significantly from the photogrammetric mesh.
+      if(Number.isFinite(pickedHeight)){
+        if(applyHeight(pickedHeight,'Google 3D clicked surface (may be roof/tree).')) {
+          status((target?'Target':'Camera')+' placed on clicked Google mesh surface.');
+        }
+        return;
+      }
+      if(viewer.scene.sampleHeightSupported){
+        try{
+          // Query full 3D-tiles detail at coordinates, excluding our schematic overlays.
+          const pos=C.Cartographic.fromDegrees(longitude,latitude);
+          const result=await viewer.scene.sampleHeightMostDetailed([pos],overlays);
+          if(!stillCurrent())return;
+          if(applyHeight(result?.[0]?.height,'Google 3D sampled surface (may be roof/tree).')){
+            status((target?'Target':'Camera')+' position updated from Google 3D surface.');
+            return;
+          }
+        }catch(e){console.warn('Google 3D surface sampling failed',e);}
+      }
+    }
+    // A 3D mesh may be unavailable or not loaded. Fall back explicitly,
+    // never pretend that the bare-earth model exactly matches Google's mesh.
     const provider=await ensureTerrain();
     if(!stillCurrent())return;
     if(provider){
       try{
         const arr=await C.sampleTerrainMostDetailed(provider,[C.Cartographic.fromDegrees(longitude,latitude)]);
         if(!stillCurrent())return;
-        if(Number.isFinite(arr[0]?.height)){
-          state[groundKey]=arr[0].height;
-          $(groundId).value=Number(state[groundKey].toFixed(2));
-          $(amslId).value=Number((state[groundKey]+state[aglKey]).toFixed(2));
-          $(sourceId).textContent='Ground: Cesium World Terrain sample (estimated bare-earth elevation).';
-          status(target?'Target ground sampled.':'Camera ground sampled.');schedule();return;
+        if(applyHeight(arr[0]?.height,useGoogleMesh
+          ? 'Fallback: World Terrain bare-earth sample; may differ from Google 3D mesh.'
+          : 'Ground: Cesium World Terrain (estimated bare-earth elevation).')){
+          status(useGoogleMesh?'3D mesh sample unavailable; using World Terrain estimate.':'Ground elevation sampled.');
+          return;
         }
       }catch(e){console.warn('Terrain sampling failed',e);}
     }
     if(Number.isFinite(pickedHeight)){
-      state[groundKey]=pickedHeight;
-      $(groundId).value=Number(state[groundKey].toFixed(2));
-      $(amslId).value=Number((state[groundKey]+state[aglKey]).toFixed(2));
-      $(sourceId).textContent='Fallback: picked mesh surface (may be roof/tree rather than ground).';
-      status('Used picked surface height; adjust if necessary.');schedule();return;
+      if(applyHeight(pickedHeight,'Picked visible surface (may be roof/tree).'))status('Used picked surface elevation.');
+      return;
     }
-    $(sourceId).textContent='Ground unchanged: terrain sampling unavailable. Adjust elevation manually.';
-    status((target?'Target':'Camera')+' placed; using existing ground estimate.');
+    $(sourceId).textContent='Ground unchanged: surface height unavailable. Enter elevation manually.';
+    status((target?'Target':'Camera')+' placed; using existing ground height.');
   }
   function place(lat,lon,pickedHeight=null,reframe=false){
     if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180){status('Invalid latitude/longitude.',true);return;}
@@ -468,7 +498,9 @@
       try{p=viewer.scene.pickPosition(screen);}catch(e){console.warn(e);}
     }
     if(!p){const ray=viewer.camera.getPickRay(screen);p=viewer.scene.globe.pick(ray,viewer.scene);}
-    if(!p)p=viewer.camera.pickEllipsoid(screen,C.Ellipsoid.WGS84);
+    // A globe/ellipsoid fallback in Google mode could silently place the
+    // camera at zero elevation, underneath the photogrammetry.
+    if(!p && state.scene!=='google')p=viewer.camera.pickEllipsoid(screen,C.Ellipsoid.WGS84);
     return p;
   }
   function armPlacement(kind) {
@@ -503,7 +535,7 @@
       viewer.scene.globe.show=false;
       state.scene='google';schedule();
       await sampleGround();
-      status('Google Photorealistic 3D active. Click map to place camera; terrain elevation is approximate.');
+      status('Google 3D active. Camera elevation sampled from the visible mesh where available.');
     }catch(e){console.error(e);status('Google tiles could not load: '+(e.message||e),true);}
   }
   function standardMap() {

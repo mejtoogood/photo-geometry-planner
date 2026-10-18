@@ -27,5 +27,8 @@ assert.ok(app.includes("if(preview || !shouldShow)continue;"),'No 3D celestial l
 assert.ok(app.includes("if(shortRange)boxFaces(start,end"),'Large FOV polygon surfaces must not render');
 assert.ok(app.includes("if(shortRange)boxFaces(from,to"),'Large DOF volume surfaces must not render');
 assert.ok(!app.includes("collect(line([pos,mark]"),'Do not render long physical sightlines to celestial markers');
+assert.ok(app.includes("scene.sampleHeightMostDetailed([pos],overlays)"),'Sample Google 3D mesh elevation before World Terrain');
+assert.ok(app.includes("if(useGoogleMesh)"),'Mesh sampling must depend on active Google 3D');
+assert.ok(app.includes("if(!p && state.scene!=='google')"),'No ellipsoid fallbacks in Google mode');
 assert.ok(app.includes("orientation:{direction:basis.f,up:basis.up}"),'Preview camera uses optical frustum basis');
 console.log('UI references tests passed');

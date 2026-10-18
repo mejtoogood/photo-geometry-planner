@@ -50,3 +50,7 @@ The camera preview now uses the **same forward/right/up orientation vectors** as
 ## Long-distance planning view
 
 For projection extents above **1 km**, the tool switches automatically to wireframe geometry. Extremely large translucent polygons across a Google Photorealistic 3D scene previously obscured the terrain. The FOV extent, optical calculations, and focus distances are unchanged, but the projected FOV/DOF/focus surfaces are drawn as outlines only. Schematic celestial markers and the 24-hour trajectory arcs remain visible; redundant rays extending all the way from the camera to each celestial marker are removed. Camera view uses a separate angle-based overlay and now includes a visible roll-reset button. Roll set to 90° intentionally rotates the image sideways.
+
+## Google 3D surface heights
+
+When the Google Photorealistic 3D Tiles layer is active, clicking to place a camera or target now **preserves the clicked mesh surface height**, instead of overriding it with Cesium World Terrain. Resampling explicitly queries the Google 3D Tiles mesh using `scene.sampleHeightMostDetailed`, then falls back to Cesium World Terrain only if no Google surface can be sampled. The elevation source is shown beside the camera/target height fields. A photogrammetry mesh may return roof/tree elevation rather than bare ground; the values remain manually editable. Google 3D camera views close to the surface may still show mesh artefacts where models are imperfect.
