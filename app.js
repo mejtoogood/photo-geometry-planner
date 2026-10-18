@@ -10,6 +10,7 @@
   const L = window.LensControls;
   const rad = C.Math.toRadians;
   const deg = C.Math.toDegrees;
+  const DAY_SKY=C.Color.fromCssColorString('#76b7e2');
   const clamp = (x, a, b) => Math.max(a,Math.min(b,x));
   const fmt = (x,d=1) => Number.isFinite(x) ? x.toLocaleString('en-AU',{maximumFractionDigits:d,minimumFractionDigits:d}) : '∞';
   const presets = {d850:[35.9,23.9,.03],fe:[36,24,.03], 'nikon-dx':[23.5,15.6,.02],p67:[70,56,.05]};
@@ -212,6 +213,8 @@
   function drawAstronomy(pos,basis,op) {
     try {
       const date=dateFromWall();lastAstro=window.AstroDirections.calculate(date,state.lat,state.lon,absoluteHeight());
+      // Simple sky tied to the selected planning time: no Cesium starfield or celestial sprites.
+      viewer.scene.backgroundColor=lastAstro.sun.alt>=0 ? DAY_SKY : C.Color.BLACK;
       const colours={sun:'#ffc268',moon:'#c5c9ff',core:'#ee9bdc'};
       const names={sun:'Sun',moon:'Moon',core:'Core'};
       const markerRange=clamp(state.extent*.9,100,3000);
@@ -558,11 +561,14 @@
       navigationHelpButton:false,fullscreenButton:false,selectionIndicator:false,infoBox:false,
       geocoder:C.IonGeocodeProviderType.GOOGLE,
       terrainProvider:new C.EllipsoidTerrainProvider(),
+      skyBox:false,
+      skyAtmosphere:false,
       baseLayer:false
     });
     viewer.imageryLayers.addImageryProvider(new C.OpenStreetMapImageryProvider({url:'https://tile.openstreetmap.org/'}));
     viewer.scene.globe.depthTestAgainstTerrain=true;
-    viewer.scene.skyAtmosphere.show=true;
+    viewer.scene.globe.showGroundAtmosphere=false;
+    viewer.scene.backgroundColor=DAY_SKY;
     // Use the camera pose for the planning camera, not the Cesium viewport camera.
     viewer.camera.setView({destination:C.Cartesian3.fromDegrees(state.lon,state.lat,state.ground+2500),
       orientation:{heading:rad(10),pitch:rad(-45),roll:0}});
