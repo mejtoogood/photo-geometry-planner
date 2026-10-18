@@ -28,4 +28,29 @@ assert.ok(drag.heading<90,'Drag right should move the sky right, rotating headin
 assert.ok(drag.pitch<10,'Drag up should lower the optical axis');
 assert.equal(P.dragToAngles(359,88,0,-100,-100,100,100,90,60).pitch,28);
 assert.equal(P.dragToAngles(10,20,0,30,20,0,0,80,50).heading,10);
+// Sensor roll moves the frame, not the projected world: test the composition
+// of the rolled sensor basis with its inverse CSS rotation.
+const sceneDirection={x:.12,y:1,z:.17},sensorH=36,sensorV=24,focal=50;
+const baseline=P.project(sceneDirection,basis,sensorH/(2*focal),sensorV/(2*focal));
+for(const roll of [-180,-90,-45,0,30,90,135,180]){
+  const r=roll*Math.PI/180,c=Math.cos(r),s=Math.sin(r);
+  const rolledBasis={
+    f:basis.f,
+    right:{x:c,y:0,z:s},
+    up:{x:-s,y:0,z:c}
+  };
+  const frame=P.fitRotatedFrame(1400,900,sensorH,sensorV,roll);
+  const boxW=Math.abs(c)*frame.width+Math.abs(s)*frame.height;
+  const boxH=Math.abs(s)*frame.width+Math.abs(c)*frame.height;
+  assert.ok(boxW<=1400*.88+1e-6,`frame exceeds canvas width at roll ${roll}`);
+  assert.ok(boxH<=900*.84+1e-6,`frame exceeds canvas height at roll ${roll}`);
+  const local=P.project(sceneDirection,rolledBasis,sensorH/(2*focal),sensorV/(2*focal));
+  assert.ok(local?.inside,'direction should remain inside sensor for these angles');
+  const worldPixel=P.unrollPixel((local.x-.5)*frame.width,(local.y-.5)*frame.height,roll);
+  const intendedPixel={x:(baseline.x-.5)*frame.width,y:(baseline.y-.5)*frame.height};
+  assert.ok(Math.abs(worldPixel.x-intendedPixel.x)<1e-8,`world x shifted by roll ${roll}`);
+  assert.ok(Math.abs(worldPixel.y-intendedPixel.y)<1e-8,`world y shifted by roll ${roll}`);
+}
+assert.throws(()=>P.fitRotatedFrame(0,900,36,24,0),RangeError);
+assert.throws(()=>P.fitRotatedFrame(1400,900,36,24,NaN),RangeError);
 console.log('Camera preview projection tests passed');

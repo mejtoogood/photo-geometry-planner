@@ -172,12 +172,14 @@
     const a=rad(az),e=rad(alt);
     return localToWorld(enu,new C.Cartesian3(Math.sin(a)*Math.cos(e),Math.cos(a)*Math.cos(e),Math.sin(e)));
   }
-  function cameraVectors(pos) {
+  function cameraVectors(pos,rollDegrees=state.roll) {
     const enu=transform(pos),f=azAltVector(enu,state.heading,state.pitch);
     const zenith=localToWorld(enu,new C.Cartesian3(0,0,1));
     let right=unit(C.Cartesian3.cross(f,zenith,new C.Cartesian3()));
     let up=unit(C.Cartesian3.cross(right,f,new C.Cartesian3()));
-    const roll=rad(state.roll),r=add(scaled(right,Math.cos(roll)),scaled(up,Math.sin(roll)));
+    // The 3D FOV and sensor projections use the selected sensor roll.
+    // The Cesium *view camera* is always unrolled to keep the real world level.
+    const roll=rad(rollDegrees),r=add(scaled(right,Math.cos(roll)),scaled(up,Math.sin(roll)));
     up=add(scaled(up,Math.cos(roll)),scaled(right,-Math.sin(roll)));
     return {enu,f,right:unit(r),up:unit(up)};
   }
@@ -583,15 +585,17 @@
     const w=viewer.canvas.clientWidth,h=viewer.canvas.clientHeight;
     if(w<=0 || h<=0)return; // Wait for Cesium's canvas to acquire its display size.
     const ratio=state.sensorWidth/state.sensorHeight;
-    // Size the viewfinder against BOTH viewport dimensions so the entire sensor
-    // frame remains visible even with a wide canvas or an unusually tall format.
-    const frameWidth=Math.min(w*.88,h*.84*ratio);
-    const frameHeight=frameWidth/ratio;
+    // Fit the *rotated* rectangle inside the map. At 90° the portrait-shaped
+    // viewfinder still fits, without shrinking or rolling Cesium's terrain.
+    const {width:frameWidth,height:frameHeight}=Projection.fitRotatedFrame(
+      w,h,state.sensorWidth,state.sensorHeight,state.roll);
     frame.style.width=frameWidth+'px';
     frame.style.height=frameHeight+'px';
     frame.style.aspectRatio=String(ratio);
-    // Frustum is wider than the viewfinder because the surrounding margin is
-    // context; the sensor rectangle itself is the specified optical FOV.
+    // Basis.right turns towards physical up with positive sensor roll, hence
+    // screen-coordinate rotation is the opposite sign (CSS y increases down).
+    frame.style.transform=`rotate(${-state.roll}deg)`;
+    // The optical sensor rectangle, not the whole canvas, defines the FOV.
     const angle=Projection.fovForFrame(state.sensorWidth,state.sensorHeight,state.focal,
       w,h,frameWidth,frameHeight);
     if(viewer.camera.frustum instanceof C.PerspectiveFrustum)viewer.camera.frustum.fov=angle;
@@ -600,9 +604,10 @@
   }
   function updatePreview() {
     if(!preview)return;
-    const pos=locationCartesian(),basis=cameraVectors(pos);
-    // Use the same ENU-derived basis as the projection, including roll.
-    viewer.camera.setView({destination:pos,orientation:{direction:basis.f,up:basis.up}});
+    const pos=locationCartesian(),levelBasis=cameraVectors(pos,0);
+    // Cesium renders the world level, regardless of the sensor roll.
+    // The rolled sensor/frame and celestial trajectories rotate *over* it.
+    viewer.camera.setView({destination:pos,orientation:{direction:levelBasis.f,up:levelBasis.up}});
     viewFrustum();
   }
   function setPreviewCameraControls(active) {
@@ -632,7 +637,9 @@
       const frame=$('cameraFrame').querySelector('.frame-inner');
       const hfov=deg(2*Math.atan(state.sensorWidth/(2*state.focal)));
       const vfov=deg(2*Math.atan(state.sensorHeight/(2*state.focal)));
-      const angles=Projection.dragToAngles(state.heading,state.pitch,state.roll,dx,dy,
+      // Mouse moves the level world view. Sensor roll changes composition only,
+      // not how the user pans the scene with the mouse.
+      const angles=Projection.dragToAngles(state.heading,state.pitch,0,dx,dy,
         frame.clientWidth,frame.clientHeight,hfov,vfov);
       state.heading=angles.heading;state.pitch=angles.pitch;
       $('heading').value=state.heading;$('headingNumber').value=Number(state.heading.toFixed(2));

@@ -97,3 +97,6 @@
 .target-alignment-table tbody tr:last-child th,.target-alignment-table tbody tr:last-child td{border-bottom:0}
 .target-alignment-table .target-event-off{opacity:.43}
 .target-alignment-table .ground-bearing-dot{margin-right:2px}
+
+/* v1.4: the sensor frame rotates over a level Cesium viewport. */
+#cameraFrame .frame-inner{transform-origin:50% 50%;will-change:transform}

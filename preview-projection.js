@@ -52,7 +52,27 @@
       pitch:Math.max(-89,Math.min(89,pitch+altDelta))
     };
   }
-  const api={project,fovForFrame,clipSegment,dragToAngles};
+  // Fit the entire *rotated* sensor within the Cesium viewport, including
+  // the corner extents at 45/90 degrees. Pixel scale is uniform on both axes.
+  function fitRotatedFrame(canvasWidth,canvasHeight,sensorWidth,sensorHeight,rollDeg,
+                           widthFraction=.88,heightFraction=.84) {
+    if([canvasWidth,canvasHeight,sensorWidth,sensorHeight,rollDeg].some(n=>!Number.isFinite(n))
+       || [canvasWidth,canvasHeight,sensorWidth,sensorHeight].some(n=>n<=0))
+      throw new RangeError('Invalid frame geometry');
+    const ratio=sensorWidth/sensorHeight,theta=rollDeg*Math.PI/180;
+    const c=Math.abs(Math.cos(theta)),s=Math.abs(Math.sin(theta));
+    const extentW=c*ratio+s,extentH=s*ratio+c;
+    const scale=Math.min(canvasWidth*widthFraction/extentW,canvasHeight*heightFraction/extentH);
+    return {width:ratio*scale,height:scale};
+  }
+  // Applying CSS rotate(-roll) to the frame transforms sensor-local pixels
+  // back into the fixed world screen. Astronomical markers projected using
+  // the rolled camera basis therefore remain fixed on the terrain image.
+  function unrollPixel(localX,localY,rollDeg) {
+    const r=rollDeg*Math.PI/180,c=Math.cos(r),s=Math.sin(r);
+    return {x:localX*c+localY*s,y:-localX*s+localY*c};
+  }
+  const api={project,fovForFrame,clipSegment,dragToAngles,fitRotatedFrame,unrollPixel};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else root.PreviewProjection=api;
 })(typeof window!=='undefined'?window:globalThis);
