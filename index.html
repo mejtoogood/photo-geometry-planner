@@ -7,7 +7,7 @@
   <title>Photo Geometry — 3D photography planner</title>
   <script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/';</script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Widgets/widgets.css">
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=15">
   <script defer src="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Cesium.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
   <script defer src="optics.js?v=2"></script>
@@ -17,13 +17,13 @@
   <script defer src="solar-phases.js?v=2"></script>
   <script defer src="preview-projection.js?v=2"></script>
   <script defer src="ground-bearings.js?v=2"></script>
-  <script defer src="app.js?v=14"></script>
+  <script defer src="app.js?v=15"></script>
 </head>
 <body>
   <div class="app">
     <aside class="panel">
       <header>
-        <h1>Photo Geometry <small>v1.4</small></h1>
+        <h1>Photo Geometry <small>v1.5</small></h1>
         <p>3D camera field-of-view &amp; depth-of-field planner</p>
       </header>
       <div class="view-actions">
@@ -39,6 +39,7 @@
           <label>Longitude (°) <input id="lon" type="number" min="-180" max="180" step="any"></label>
         </div>
         <div class="buttons"><button id="coordinatesBtn" type="button">Place at coordinates</button><button id="pickBtn" type="button">Click map to place</button></div>
+        <p class="hint">Shift + drag the Camera marker in 3D planning view to reposition it on the terrain. AGL height stays unchanged.</p>
         <label>Estimated ground elevation (m AMSL) <input id="ground" type="number" step="0.1"></label>
         <div class="formgrid">
           <label>Camera height AGL (m) <input id="agl" type="number" step="0.1"></label>
@@ -91,6 +92,7 @@
           <button id="targetCoordinatesBtn" type="button">Place at coordinates</button>
           <button id="targetPickBtn" type="button">Click map to place target</button>
         </div>
+        <p class="hint">Shift + drag the Target marker in 3D planning view. Ground elevation follows the surface; target height AGL is preserved.</p>
         <label>Target ground elevation (m AMSL) <input id="targetGround" type="number" step="0.1"></label>
         <div class="formgrid">
           <label>Target height AGL (m) <input id="targetAgl" type="number" step="0.1"></label>
@@ -180,6 +182,7 @@
     </aside>
     <main class="maparea">
       <div id="cesiumContainer"></div>
+      <div id="locationDragGhost" class="location-drag-ghost" hidden></div>
       <div id="previewHint" class="preview-hint" hidden>Drag to pan the camera · Azimuth/elevation update automatically · Dashed arcs are below the horizon</div>
       <div id="cameraFrame" hidden>
         <div class="frame-inner">
@@ -192,7 +195,7 @@
           <div id="frameInfo" class="viewfinder-footer">CAMERA · GEOMETRIC VIEW</div>
         </div>
       </div>
-      <div class="maphint">Left-drag orbit · Wheel zoom · Right-drag tilt · Placement buttons arm camera or target picking</div>
+      <div class="maphint">Shift + drag Camera/Target markers to reposition · Left-drag orbit · Wheel zoom · Right-drag tilt</div>
       <div class="maplegend"><span><i class="swatch fov"></i> FOV</span><span><i class="swatch dof"></i> DOF</span><span><i class="swatch sun"></i> Sun</span><span><i class="swatch moon"></i> Moon</span><span><i class="swatch core"></i> Galactic core</span></div>
     </main>
   </div>

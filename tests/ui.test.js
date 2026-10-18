@@ -58,4 +58,23 @@ assert.ok(app.includes("Ground.targetAlignments("),'Calculate rise/set from targ
 assert.ok(app.includes("Ground.sampleRay(state.targetLat,state.targetLon,az,state.targetProjectionLength"),'All target rays originate at physical target');
 assert.ok(app.includes("material:towardsBody?colour:new C.PolylineDashMaterialProperty"),'Candidate camera rays must be dashed');
 assert.ok(app.includes("targetShowBody")&&app.includes("targetShowCameras"),'Both target direction modes must be independently selectable');
+// Dragging must be limited to Shift + dragging the physical marker,
+// leaving Cesium's normal map navigation and camera-preview panning intact.
+assert.ok(ids.includes('locationDragGhost'),'Drag ghost overlay is missing');
+assert.ok(html.includes('Shift + drag the Camera marker'),'Camera drag gesture must be discoverable');
+assert.ok(html.includes('Shift + drag the Target marker'),'Target drag gesture must be discoverable');
+assert.ok(app.includes("registerLocationDragging()"),'Marker drag handlers must be registered');
+assert.ok(app.includes("if(preview||placing||!event.shiftKey||event.button!==0||locationPointer)return"),'Dragging must require Shift + primary mouse button and planning view');
+assert.ok(app.includes("id:'location-marker-'+locationRole"),'Only actual camera/target markers should be draggable');
+assert.ok(app.includes("viewer.scene.drillPick(screen,24)"),'Marker picking should handle overlapping scene geometry');
+assert.ok(app.includes("for(const key of controls)controller[key]=false"),'Cesium navigation must be disabled during marker dragging');
+assert.ok(app.includes("for(const key of controls)controller[key]=drag.controls[key]"),'Cesium navigation must be restored when dragging ends');
+assert.ok(app.includes("canvas.setPointerCapture(event.pointerId)"),'Pointer must stay captured during drag');
+assert.ok(app.includes("if(locationPointer?.kind!=='camera')collect(pointLabel(pos,'Camera'"),'Camera marker must not obscure drag surface picking');
+assert.ok(app.includes("if(locationPointer?.kind!=='target')collect(pointLabel(target,'Target'"),'Target marker must not obscure drag surface picking');
+assert.ok(app.includes("state[latKey]=lat;state[lonKey]=lon;state[groundKey]=height"),'Dragged locations must update ground and coordinates');
+assert.ok(app.includes("height+state[aglKey]"),'Dragged locations must preserve AGL when calculating AMSL');
+assert.ok(app.includes("sampleGround({target:drag.kind==='target'})"),'Google depth-pick fallback must resample the final mesh height');
+assert.ok(app.includes("if(event.key==='Escape'&&locationPointer)"),'Dragging must support cancellation');
+assert.ok(app.includes("if(canvas.hasPointerCapture(drag.pointerId))canvas.releasePointerCapture(drag.pointerId)"),'Pointer capture must be released');
 console.log('UI references tests passed');

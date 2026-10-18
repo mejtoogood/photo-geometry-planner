@@ -73,7 +73,7 @@
   let state=sanitise(readShared()||previous||{});
   let viewer=null, googleTiles=null, terrainProvider=null, terrainTask=null;
   let overlays=[]; let preview=false, overviewPose=null, placing=null, drawPending=false;
-  let previewControllerState=null,lookPointer=null;
+  let previewControllerState=null,lookPointer=null,locationPointer=null;
   let elevationRevision=0, targetElevationRevision=0, lastAstro=null, trajectoryCache=null, solarDayCache=null, groundDayCache=null,targetAlignmentCache=null;
   function status(message,error=false) {
     $('status').textContent=message;$('status').classList.toggle('error',error);
@@ -217,9 +217,12 @@
     return Math.abs(C.Cartesian3.dot(direction,basis.right)/z)<=op.tanHalfH &&
       Math.abs(C.Cartesian3.dot(direction,basis.up)/z)<=op.tanHalfV;
   }
-  function pointLabel(pos,name,color,throughTerrain=true,selected=false) {
+  function pointLabel(pos,name,color,throughTerrain=true,selected=false,locationRole=null) {
     const depthDistance=throughTerrain?Number.POSITIVE_INFINITY:0;
-    return viewer.entities.add({position:pos,point:{pixelSize:selected?17:13,color,
+    return viewer.entities.add({
+      ...(locationRole?{id:'location-marker-'+locationRole}:{}),
+      name,
+      position:pos,point:{pixelSize:selected?17:locationRole?17:13,color,
       outlineWidth:2,outlineColor:C.Color.fromCssColorString('#0c1925'),disableDepthTestDistance:depthDistance},
       label:{text:name,font:'bold 13px sans-serif',pixelOffset:new C.Cartesian2(12,-17),
         horizontalOrigin:C.HorizontalOrigin.LEFT,style:C.LabelStyle.FILL_AND_OUTLINE,
@@ -537,11 +540,11 @@
     const pos=locationCartesian(),basis=cameraVectors(pos);
     const dist=state.extent,tip=Math.min(.3,dist*.15);
     if(!preview){
-      collect(pointLabel(pos,'Camera',C.Color.WHITE));
+      if(locationPointer?.kind!=='camera')collect(pointLabel(pos,'Camera',C.Color.WHITE,true,false,'camera'));
       const base=C.Cartesian3.fromDegrees(state.lon,state.lat,state.ground);
       collect(line([base,pos],C.Color.WHITE.withAlpha(.55),2,true));
       const target=targetCartesian(),accent=C.Color.fromCssColorString('#ffa875');
-      collect(pointLabel(target,'Target',accent));
+      if(locationPointer?.kind!=='target')collect(pointLabel(target,'Target',accent,true,false,'target'));
       collect(line([C.Cartesian3.fromDegrees(state.targetLon,state.targetLat,state.targetGround),target],accent.withAlpha(.7),2,true));
       collect(line([pos,target],accent.withAlpha(.45),1.6,true));
       const end=cornersAt(pos,basis,dist,op),start=cornersAt(pos,basis,tip,op);
@@ -793,6 +796,169 @@
     if(!p && state.scene!=='google')p=viewer.camera.pickEllipsoid(screen,C.Ellipsoid.WGS84);
     return p;
   }
+  function registerLocationDragging() {
+    const canvas=viewer.canvas;
+    const controller=viewer.scene.screenSpaceCameraController;
+    const controls=['enableRotate','enableTranslate','enableZoom','enableTilt','enableLook'];
+    const screenPoint=event=>{
+      const rect=canvas.getBoundingClientRect();
+      return new C.Cartesian2(event.clientX-rect.left,event.clientY-rect.top);
+    };
+    function moveGhost(event) {
+      const bounds=canvas.getBoundingClientRect(),ghost=$('locationDragGhost');
+      ghost.style.left=(event.clientX-bounds.left)+'px';
+      ghost.style.top=(event.clientY-bounds.top)+'px';
+    }
+    function dragHit(screen,drag) {
+      if(state.scene!=='google')return {position:getClickPosition(screen),approximate:false};
+      // Google photogrammetry is a 3D Tiles primitive. Avoid accidentally
+      // dragging onto our schematic polylines or the hidden Cesium globe.
+      const selection=viewer.scene.pick(screen);
+      if(viewer.scene.pickPositionSupported && !C.defined(selection?.id)){
+        try{
+          const position=viewer.scene.pickPosition(screen);
+          if(position){
+            const carto=C.Cartographic.fromCartesian(position);
+            if(carto&&Number.isFinite(carto.height)&&carto.height>=-12000&&carto.height<=20000)
+              return {position,approximate:false};
+          }
+        }catch(e){console.warn('Google surface depth unavailable during drag',e);}
+      }
+      // A 3D marker or a depthless tile may block depth picking. Intersect
+      // the ray with a virtual ellipsoid at the original ground elevation.
+      // We resample the actual Google surface once the user releases.
+      const h=drag.previous.ground,r=C.Ellipsoid.WGS84.radii;
+      const virtualSurface=new C.Ellipsoid(r.x+h,r.y+h,r.z+h);
+      return {position:viewer.camera.pickEllipsoid(screen,virtualSurface),approximate:true};
+    }
+    function markerAt(screen) {
+      // Frustum edges and ground-bearing polylines can overlap the location
+      // markers; look through the stack rather than just picking the top item.
+      const hits=viewer.scene.drillPick(screen,24);
+      for(const hit of hits){
+        const id=hit?.id?.id;
+        if(id==='location-marker-camera')return 'camera';
+        if(id==='location-marker-target')return 'target';
+      }
+      return null;
+    }
+    function finish(cancel=false) {
+      const drag=locationPointer;
+      if(!drag)return;
+      locationPointer=null;
+      for(const key of controls)controller[key]=drag.controls[key];
+      document.querySelector('.maparea').classList.remove('location-dragging','location-grabbable');
+      $('locationDragGhost').hidden=true;
+      if(canvas.hasPointerCapture(drag.pointerId))canvas.releasePointerCapture(drag.pointerId);
+      schedule(); // Restore the Cesium location marker when dragging finishes.
+      if(cancel){
+        const prefix=drag.kind==='target'?'target':'';
+        state[prefix?'targetLat':'lat']=drag.previous.lat;
+        state[prefix?'targetLon':'lon']=drag.previous.lon;
+        state[prefix?'targetGround':'ground']=drag.previous.ground;
+        $(prefix?'targetLat':'lat').value=drag.previous.lat.toFixed(6);
+        $(prefix?'targetLon':'lon').value=drag.previous.lon.toFixed(6);
+        $(prefix?'targetGround':'ground').value=Number(drag.previous.ground.toFixed(2));
+        $(prefix?'targetAmsl':'amsl').value=Number((drag.previous.ground+
+          state[prefix?'targetAgl':'agl']).toFixed(2));
+        $(prefix?'targetHeightSource':'heightSource').textContent=drag.previous.source;
+        schedule();
+        status((drag.kind==='target'?'Target':'Camera')+' drag cancelled.');
+        return;
+      }
+      if(drag.moved){
+        const label=drag.kind==='target'?'Target':'Camera';
+        status(label+' moved to '+drag.last.lat.toFixed(6)+', '+drag.last.lon.toFixed(6)+
+          ' · ground '+fmt(drag.last.height,1)+' m AMSL · AGL preserved.');
+        if(drag.last.approximate && state.scene==='google'){
+          status(label+' moved; refining height against Google 3D mesh…');
+          sampleGround({target:drag.kind==='target'});
+        }
+      }else{
+        status('Shift + drag a Camera or Target marker to move it.');
+      }
+    }
+    canvas.addEventListener('pointerdown',event=>{
+      if(preview||placing||!event.shiftKey||event.button!==0||locationPointer)return;
+      const kind=markerAt(screenPoint(event));
+      if(!kind)return;
+      const isTarget=kind==='target';
+      // Invalidate asynchronous samples that might otherwise overwrite the drag.
+      if(isTarget)++targetElevationRevision;else ++elevationRevision;
+      locationPointer={
+        kind,pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,
+        moved:false,last:null,controls:Object.fromEntries(controls.map(key=>[key,controller[key]])),
+        previous:{
+          lat:isTarget?state.targetLat:state.lat,lon:isTarget?state.targetLon:state.lon,
+          ground:isTarget?state.targetGround:state.ground,
+          source:$(isTarget?'targetHeightSource':'heightSource').textContent
+        }
+      };
+      for(const key of controls)controller[key]=false;
+      document.querySelector('.maparea').classList.add('location-dragging');
+      const ghost=$('locationDragGhost');
+      ghost.textContent=kind==='target'?'Target':'Camera';
+      ghost.hidden=false;
+      moveGhost(event);
+      canvas.setPointerCapture(event.pointerId);
+      schedule(); // Hide picked 3D marker so it can't mask the underlying tiles.
+      status('Dragging '+(isTarget?'Target':'Camera')+' — release to place; Esc to cancel.');
+      event.preventDefault();
+      event.stopPropagation();
+    },true);
+    canvas.addEventListener('pointermove',event=>{
+      const drag=locationPointer;
+      if(!drag){
+        document.querySelector('.maparea').classList.toggle('location-grabbable',
+          !preview&&!placing&&event.shiftKey&&!!markerAt(screenPoint(event)));
+        return;
+      }
+      if(drag.pointerId!==event.pointerId)return;
+      if(!drag.moved&&Math.hypot(event.clientX-drag.startX,event.clientY-drag.startY)<3)return;
+      // Pick the actually visible ground/Google 3D mesh, not the old marker
+      // coordinate or the WGS84 ellipsoid hidden beneath photogrammetry.
+      moveGhost(event);
+      const {position:hit,approximate}=dragHit(screenPoint(event),drag);
+      if(!hit){event.preventDefault();return;}
+      const carto=C.Cartographic.fromCartesian(hit);
+      if(!carto||!Number.isFinite(carto.height)||!Number.isFinite(carto.latitude)
+        ||!Number.isFinite(carto.longitude)){event.preventDefault();return;}
+      const lat=deg(carto.latitude),lon=deg(carto.longitude),height=carto.height;
+      if(Math.abs(lat)>90||Math.abs(lon)>180){event.preventDefault();return;}
+      const isTarget=drag.kind==='target';
+      const latKey=isTarget?'targetLat':'lat',lonKey=isTarget?'targetLon':'lon';
+      const groundKey=isTarget?'targetGround':'ground',aglKey=isTarget?'targetAgl':'agl';
+      state[latKey]=lat;state[lonKey]=lon;state[groundKey]=height;
+      $(latKey).value=lat.toFixed(6);
+      $(lonKey).value=lon.toFixed(6);
+      $(groundKey).value=Number(height.toFixed(2));
+      $(isTarget?'targetAmsl':'amsl').value=Number((height+state[aglKey]).toFixed(2));
+      $(isTarget?'targetHeightSource':'heightSource').textContent=
+        approximate?'Approximate drag height; Google 3D surface will be resampled on release.':
+          state.scene==='google'?'Dragged onto visible Google 3D surface (may be roof/tree).':
+          'Dragged onto visible terrain surface.';
+      drag.moved=true;drag.last={lat,lon,height,approximate};
+      schedule();
+      event.preventDefault();
+      event.stopPropagation();
+    },true);
+    canvas.addEventListener('pointerup',event=>{
+      if(locationPointer?.pointerId===event.pointerId)finish(false);
+    },true);
+    canvas.addEventListener('pointerleave',()=>{
+      if(!locationPointer)document.querySelector('.maparea').classList.remove('location-grabbable');
+    },true);
+    canvas.addEventListener('pointercancel',event=>{
+      if(locationPointer?.pointerId===event.pointerId)finish(true);
+    },true);
+    canvas.addEventListener('lostpointercapture',event=>{
+      if(locationPointer?.pointerId===event.pointerId)finish(true);
+    },true);
+    window.addEventListener('keydown',event=>{
+      if(event.key==='Escape'&&locationPointer){event.preventDefault();finish(true);}
+    });
+    window.addEventListener('blur',()=>{if(locationPointer)finish(true);});
+  }
   function armPlacement(kind) {
     if(preview)setPreview(false);
     placing=placing===kind?null:kind;
@@ -1011,6 +1177,7 @@
       orientation:{heading:rad(10),pitch:rad(-45),roll:0}});
     viewer.screenSpaceEventHandler.setInputAction(e=>onPlace(e.position),C.ScreenSpaceEventType.LEFT_CLICK);
     registerPreviewDragging();
+    registerLocationDragging();
     const existing=localStorage.getItem('photoGeometryIonToken')||localStorage.getItem('cesiumIonToken')||'';
     $('ionToken').value=existing;
     $('apertureSlider').max=String(L.apertures.length-1);
