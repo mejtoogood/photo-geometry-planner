@@ -7,20 +7,21 @@
   <title>Photo Geometry — 3D photography planner</title>
   <script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/';</script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Widgets/widgets.css">
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
   <script defer src="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Cesium.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
   <script defer src="optics.js?v=2"></script>
   <script defer src="astro.js?v=2"></script>
   <script defer src="controls.js?v=2"></script>
   <script defer src="sky-shell.js?v=1"></script>
-  <script defer src="app.js?v=4"></script>
+  <script defer src="solar-phases.js?v=1"></script>
+  <script defer src="app.js?v=5"></script>
 </head>
 <body>
   <div class="app">
     <aside class="panel">
       <header>
-        <h1>Photo Geometry <small>v0.4</small></h1>
+        <h1>Photo Geometry <small>v0.5</small></h1>
         <p>3D camera field-of-view &amp; depth-of-field planner</p>
       </header>
       <div class="view-actions">
@@ -117,6 +118,15 @@
         <div class="checks sky-shell-options"><label><input id="celestialThroughTerrain" type="checkbox" checked> Show celestial markers and arcs through terrain</label></div>
         <p class="hint">Sky shell radius = projection extent × selected scale. This only changes display distance; astronomical directions and FOV/DOF calculations remain unchanged.</p>
         <div id="astroReadout" class="astro-readout"></div>
+        <div class="solar-events">
+          <div class="solar-events-title">Sunrise, sunset &amp; twilight</div>
+          <div id="solarPhaseReadout" class="hint">Calculating solar phase…</div>
+          <table class="solar-table">
+            <thead><tr><th scope="col">Event</th><th scope="col">Morning</th><th scope="col">Evening</th></tr></thead>
+            <tbody id="solarEventsBody"><tr><td colspan="3">Calculating…</td></tr></tbody>
+          </table>
+          <p class="hint">Click an event time to jump there. Blue hour: −6° to −4°; golden hour: −4° to +6°. Times use the camera location and the selected UTC offset. Flat astronomical horizon; actual terrain obstruction excluded.</p>
+        </div>
         <p class="hint">Arcs represent celestial directions through the selected local day on a schematic sky shell. Dashed segments are below the astronomical horizon.</p>
         <p class="hint">Azimuth is clockwise from true north; altitude is relative to the astronomical horizon. UTC offset is explicit; change it for daylight saving or another region.</p>
       </details>

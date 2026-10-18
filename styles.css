@@ -8,3 +8,14 @@
 .sky-shell-range{grid-template-columns:102px minmax(60px,1fr) 99px;margin:12px 0 8px}
 .sky-shell-range output{font-variant-numeric:tabular-nums;text-align:right;color:#d5e3f4;white-space:nowrap;font-size:11px}
 .sky-shell-options{grid-template-columns:1fr}
+
+/* v0.5 solar phases and clickable local-time event table */
+.solar-events{margin:13px 0 4px;border-top:1px solid #344458;padding-top:10px}
+.solar-events-title{font-size:12px;font-weight:700;color:#d4e3f4}
+.solar-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:9px 0}
+.solar-table th,.solar-table td{padding:6px 4px;font-size:11px;text-align:left;vertical-align:middle;border-bottom:1px solid #2a3a49}
+.solar-table thead th{color:#aebfd0;font-size:10px}
+.solar-table th:first-child{width:40%}
+.solar-table td{font-variant-numeric:tabular-nums;color:#dce8f4}
+.panel .solar-event{font-variant-numeric:tabular-nums;font-size:11px;text-align:left;border:0;border-radius:3px;background:transparent;padding:4px 2px;color:#8cd1ff;width:auto;min-width:0;flex:none}
+.panel .solar-event:hover{color:#fff;background:#2d4e66}

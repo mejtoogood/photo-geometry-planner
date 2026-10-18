@@ -2,16 +2,17 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const C = window.Cesium;
-  if (!C || !window.Optics || !window.AstroDirections || !window.LensControls || !window.SkyShell) {
+  if (!C || !window.Optics || !window.AstroDirections || !window.LensControls || !window.SkyShell || !window.SolarPhases) {
     $('status').textContent = 'Required script failed to load. Check CDN access and refresh.';
     $('status').classList.add('error');
     return;
   }
   const L = window.LensControls;
   const S = window.SkyShell;
+  const Solar = window.SolarPhases;
   const rad = C.Math.toRadians;
   const deg = C.Math.toDegrees;
-  const DAY_SKY=C.Color.fromCssColorString('#76b7e2');
+
   const clamp = (x, a, b) => Math.max(a,Math.min(b,x));
   const fmt = (x,d=1) => Number.isFinite(x) ? x.toLocaleString('en-AU',{maximumFractionDigits:d,minimumFractionDigits:d}) : '∞';
   const presets = {d850:[35.9,23.9,.03],fe:[36,24,.03], 'nikon-dx':[23.5,15.6,.02],p67:[70,56,.05]};
@@ -65,7 +66,7 @@
   let state=sanitise(readShared()||previous||{});
   let viewer=null, googleTiles=null, terrainProvider=null, terrainTask=null;
   let overlays=[]; let preview=false, overviewPose=null, placing=null, drawPending=false;
-  let elevationRevision=0, targetElevationRevision=0, lastAstro=null, trajectoryCache=null;
+  let elevationRevision=0, targetElevationRevision=0, lastAstro=null, trajectoryCache=null, solarDayCache=null;
   function status(message,error=false) {
     $('status').textContent=message;$('status').classList.toggle('error',error);
   }
@@ -117,6 +118,30 @@
     $('celestialShellReadout').textContent=`${state.celestialShellScale.toLocaleString('en-AU',{maximumFractionDigits:1})}× · ${fmt(S.radius(state.extent,state.celestialShellScale),0)} m`;
     const when=dateFromWall();
     $('utcReadout').textContent=`UTC: ${when.toISOString().slice(0,16).replace('T',' ')} · Offset ${state.utcOffset>=0?'+':''}${state.utcOffset} h`;
+    renderSolarEvents();
+  }
+  function cachedSolarDay() {
+    const key=[state.wallTime.slice(0,10),state.utcOffset,state.lat,state.lon,absoluteHeight()].join('|');
+    if(solarDayCache?.key!==key){
+      solarDayCache={key,data:Solar.calculateDay(state.wallTime.slice(0,10),state.utcOffset,state.lat,state.lon,absoluteHeight())};
+    }
+    return solarDayCache.data;
+  }
+  function renderSolarEvents() {
+    const solarAltitude=lastAstro?.sun?.alt;
+    $('solarPhaseReadout').textContent=Number.isFinite(solarAltitude)
+      ? Solar.phaseName(solarAltitude)+' · Sun altitude '+fmt(solarAltitude,1)+'°'
+      : 'Sun altitude not yet calculated';
+    try {
+      const rows=Solar.toRows(cachedSolarDay());
+      const cell=entry=>entry.time
+        ? `<td><button type="button" class="solar-event" data-event-time="${entry.time.getTime()}" title="Set planning time to this event">${entry.text}</button></td>`
+        : '<td>—</td>';
+      $('solarEventsBody').innerHTML=rows.map(row=>`<tr><th scope="row">${row.label}</th>${cell(row.morning)}${cell(row.evening)}</tr>`).join('');
+    } catch(e) {
+      console.warn('Solar event calculations unavailable',e);
+      $('solarEventsBody').innerHTML='<tr><td colspan="3">Solar events unavailable for this date/location.</td></tr>';
+    }
   }
   const absoluteHeight=()=>state.ground+state.agl;
   const locationCartesian=()=>C.Cartesian3.fromDegrees(state.lon,state.lat,absoluteHeight());
@@ -222,8 +247,8 @@
   function drawAstronomy(pos,basis,op) {
     try {
       const date=dateFromWall();lastAstro=window.AstroDirections.calculate(date,state.lat,state.lon,absoluteHeight());
-      // Simple sky tied to the selected planning time: no Cesium starfield or celestial sprites.
-      viewer.scene.backgroundColor=lastAstro.sun.alt>=0 ? DAY_SKY : C.Color.BLACK;
+      // Astronomical solar-altitude palette; no Cesium celestial skybox or atmosphere.
+      viewer.scene.backgroundColor=C.Color.fromCssColorString(Solar.skyColor(lastAstro.sun.alt));
       const colours={sun:'#ffc268',moon:'#c5c9ff',core:'#ee9bdc'};
       const names={sun:'Sun',moon:'Moon',core:'Core'};
       // An arbitrary camera-centred sky shell: its radius does not affect azimuth/altitude.
@@ -541,6 +566,15 @@
     $('backTime').addEventListener('click',()=>moveMinutes(-state.timeStep));
     $('forwardTime').addEventListener('click',()=>moveMinutes(state.timeStep));
     $('nowTime').addEventListener('click',()=>{state.wallTime=defaultWall(state.utcOffset);renderFields();schedule();});
+    $('solarEventsBody').addEventListener('click',e=>{
+      const button=e.target.closest('button[data-event-time]');
+      if(!button)return;
+      const milliseconds=Number(button.dataset.eventTime);
+      if(!Number.isFinite(milliseconds))return;
+      setWallFromUtc(new Date(milliseconds));
+      renderFields();
+      schedule();
+    });
     $('astroReadout').addEventListener('click',e=>{
       const key=e.target.closest('button[data-aim]')?.dataset.aim;if(key)aim(key);});
     $('overviewBtn').addEventListener('click',()=>setPreview(false));
@@ -582,7 +616,7 @@
     viewer.imageryLayers.addImageryProvider(new C.OpenStreetMapImageryProvider({url:'https://tile.openstreetmap.org/'}));
     viewer.scene.globe.depthTestAgainstTerrain=true;
     viewer.scene.globe.showGroundAtmosphere=false;
-    viewer.scene.backgroundColor=DAY_SKY;
+    viewer.scene.backgroundColor=C.Color.BLACK;
     // Use the camera pose for the planning camera, not the Cesium viewport camera.
     viewer.camera.setView({destination:C.Cartesian3.fromDegrees(state.lon,state.lat,state.ground+2500),
       orientation:{heading:rad(10),pitch:rad(-45),roll:0}});
