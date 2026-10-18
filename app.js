@@ -29,7 +29,9 @@
     showSun:true,showMoon:true,showCore:true,showTrajectories:true,
     showGroundBearings:true,groundBearingLength:Ground.DEFAULT_LENGTH,
     celestialShellScale:S.DEFAULT_SCALE,celestialThroughTerrain:true,
-    aimTarget:'sun',targetLat:-35.3000,targetLon:149.135,targetGround:575,targetAgl:1.6,
+    targetLat:-35.3000,targetLon:149.135,targetGround:575,targetAgl:1.6,
+    targetSunRise:true,targetSunSet:true,targetMoonRise:true,targetMoonSet:true,
+    targetShowBody:true,targetShowCameras:true,targetProjectionLength:Ground.DEFAULT_LENGTH,
     utcOffset:tzHours,wallTime:'',timeStep:15,scene:'standard'
   });
   const schema = Object.keys(defaultState());
@@ -49,7 +51,7 @@
     out.agl=clamp(out.agl,-5000,50000);out.ground=clamp(out.ground,-12000,20000);
     out.targetLat=clamp(out.targetLat,-90,90);out.targetLon=clamp(out.targetLon,-180,180);
     out.targetAgl=clamp(out.targetAgl,-5000,50000);out.targetGround=clamp(out.targetGround,-12000,20000);
-    out.aimTarget=['sun','moon','core','custom'].includes(out.aimTarget)?out.aimTarget:'sun';
+    out.targetProjectionLength=Ground.limitLength(out.targetProjectionLength);
     out.heading=((out.heading%360)+360)%360;out.pitch=clamp(out.pitch,-89,89);
     out.roll=clamp(out.roll,-180,180);out.extent=clamp(out.extent,1,50000);
     out.celestialShellScale=S.sanitiseScale(out.celestialShellScale);
@@ -72,7 +74,7 @@
   let viewer=null, googleTiles=null, terrainProvider=null, terrainTask=null;
   let overlays=[]; let preview=false, overviewPose=null, placing=null, drawPending=false;
   let previewControllerState=null,lookPointer=null;
-  let elevationRevision=0, targetElevationRevision=0, lastAstro=null, trajectoryCache=null, solarDayCache=null, groundDayCache=null;
+  let elevationRevision=0, targetElevationRevision=0, lastAstro=null, trajectoryCache=null, solarDayCache=null, groundDayCache=null,targetAlignmentCache=null;
   function status(message,error=false) {
     $('status').textContent=message;$('status').classList.toggle('error',error);
   }
@@ -87,7 +89,7 @@
     $('targetLat').value=state.targetLat.toFixed(6);$('targetLon').value=state.targetLon.toFixed(6);
     $('targetGround').value=Number(state.targetGround.toFixed(2));$('targetAgl').value=Number(state.targetAgl.toFixed(2));
     $('targetAmsl').value=Number((state.targetGround+state.targetAgl).toFixed(2));
-    $('customTargetControls').hidden=state.aimTarget!=='custom';
+
   }
   function renderFields() {
     for (const key of schema) {
@@ -97,6 +99,7 @@
     }
     renderLensControls();renderTargetFields();
     $('groundBearingLengthSlider').value=Ground.toSlider(state.groundBearingLength);
+    $('targetProjectionLengthSlider').value=Ground.toSlider(state.targetProjectionLength);
     $('headingNumber').value=state.heading;$('pitchNumber').value=state.pitch;$('rollNumber').value=state.roll;
     $('lat').value=state.lat.toFixed(6);$('lon').value=state.lon.toFixed(6);
     $('amsl').value=(state.ground+state.agl).toFixed(2);
@@ -124,6 +127,7 @@
     } catch(e){$('opticsReadout').textContent=e.message;}
     $('celestialShellReadout').textContent=`${state.celestialShellScale.toLocaleString('en-AU',{maximumFractionDigits:1})}× · ${fmt(S.radius(state.extent,state.celestialShellScale),0)} m`;
     $('groundBearingLength').value=state.groundBearingLength;
+    $('targetProjectionLength').value=state.targetProjectionLength;
     $('projectionModeNote').textContent=state.extent>SOLID_GEOMETRY_LIMIT_M
       ? 'Long-range projection: outlines only. Filled volumes are hidden beyond 1 km to avoid covering the terrain.'
       : 'Short-range projection: translucent FOV, DOF and focus surfaces are enabled.';
@@ -224,6 +228,81 @@
     const shown=inside?' <span class="isIn">in FOV</span>':'';
     const phase=name==='Moon'?` · ${Math.round(details.phase*100)}% lit`:'';
     return `<div class="astro-line"><b>${name}</b><span>Az ${fmt(details.az,1)}° · Alt ${fmt(details.alt,1)}°${phase}${shown}</span><button type="button" data-aim="${name.toLowerCase()}">Aim</button></div>`;
+  }
+  function cachedTargetAlignments() {
+    // Rise/set directions must be evaluated at the physical target.
+    const key=[state.targetLat,state.targetLon,state.targetGround,state.targetAgl,
+      state.wallTime.slice(0,10),state.utcOffset].join('|');
+    if(targetAlignmentCache?.key!==key){
+      targetAlignmentCache={
+        key,
+        events:Ground.targetAlignments(window.Astronomy,window.AstroDirections.calculate,
+          state.wallTime.slice(0,10),state.utcOffset,state.targetLat,state.targetLon,
+          state.targetGround+state.targetAgl)
+      };
+    }
+    return targetAlignmentCache.events;
+  }
+  function drawTargetAlignments() {
+    const selected={sun:{rise:state.targetSunRise,set:state.targetSunSet},
+      moon:{rise:state.targetMoonRise,set:state.targetMoonSet}};
+    const events=cachedTargetAlignments();
+    const names={sun:'Sun',moon:'Moon'},colours={sun:'#ffc268',moon:'#c5c9ff'};
+    // Always refresh the table, including while the camera preview is active.
+    const rows=events.map(event=>{
+      const active=selected[event.body][event.event];
+      const time=event.date?Solar.formatTime(event.date,state.utcOffset):'—';
+      const to=event.celestialAz===null?'—':fmt(event.celestialAz,1)+'°';
+      const from=event.cameraAz===null?'—':fmt(event.cameraAz,1)+'°';
+      return '<tr'+(active?'':' class="target-event-off"')+'><th>'+
+        '<span class="ground-bearing-dot" style="background:'+colours[event.body]+'"></span> '+
+        names[event.body]+' '+event.event+'</th><td>'+time+'</td><td>'+to+'</td><td>'+from+'</td></tr>';
+    }).join('');
+    $('targetAlignmentReadout').innerHTML='<table class="target-alignment-table"><thead>'+
+      '<tr><th>Event</th><th>Time</th><th>To body</th><th>Camera side</th></tr></thead><tbody>'+rows+'</tbody></table>';
+    if(preview || (!state.targetShowBody && !state.targetShowCameras))return;
+    for(const event of events){
+      if(!selected[event.body][event.event] || !Number.isFinite(event.celestialAz))continue;
+      const celestialColour=C.Color.fromCssColorString(colours[event.body]);
+      const caption=names[event.body]+' '+event.event;
+      for(const mode of ['body','camera']){
+        const towardsBody=mode==='body';
+        if(towardsBody&&!state.targetShowBody || !towardsBody&&!state.targetShowCameras)continue;
+        const az=towardsBody?event.celestialAz:event.cameraAz;
+        const path=Ground.sampleRay(state.targetLat,state.targetLon,az,state.targetProjectionLength,250);
+        const coords=path.map(point=>C.Cartesian3.fromDegrees(point.lon,point.lat,0));
+        const colour=towardsBody?celestialColour:C.Color.fromCssColorString('#70e9d5');
+        collect(viewer.entities.add({
+          name:'Target '+caption+' '+(towardsBody?'body direction':'candidate camera positions'),
+          polyline:{
+            positions:coords,clampToGround:true,classificationType:C.ClassificationType.BOTH,
+            arcType:C.ArcType.GEODESIC,width:towardsBody?3.5:3,
+            material:towardsBody?colour:new C.PolylineDashMaterialProperty({color:colour,dashLength:20}),
+            zIndex:towardsBody?6:5
+          }
+        }));
+        const end=path.at(-1);
+        collect(viewer.entities.add({
+          position:C.Cartesian3.fromDegrees(end.lon,end.lat,0),
+          point:{
+            pixelSize:towardsBody?8:9,color:colour,
+            outlineColor:C.Color.fromCssColorString('#10202a'),outlineWidth:1,
+            heightReference:C.HeightReference.CLAMP_TO_GROUND,
+            disableDepthTestDistance:Number.POSITIVE_INFINITY
+          },
+          label:{
+            text:(towardsBody?'To ':'Camera · ')+caption+' · '+fmt(az,1)+'°',
+            font:'bold 12px sans-serif',
+            heightReference:C.HeightReference.CLAMP_TO_GROUND,
+            verticalOrigin:C.VerticalOrigin.BOTTOM,
+            pixelOffset:new C.Cartesian2(0,-12),
+            style:C.LabelStyle.FILL_AND_OUTLINE,
+            outlineWidth:3,outlineColor:C.Color.fromCssColorString('#10202a'),
+            fillColor:colour,disableDepthTestDistance:Number.POSITIVE_INFINITY
+          }
+        }));
+      }
+    }
   }
   function cachedGroundDay() {
     const key=[state.lat,state.lon,absoluteHeight(),state.wallTime.slice(0,10),state.utcOffset].join('|');
@@ -431,7 +510,7 @@
         const mark=add(pos,scaled(dir,markerRange));
         // Celestial markers indicate angular direction, not a physical sightline.
         // Their all-day trajectories are drawn above; avoid 100 km marker rays.
-        collect(pointLabel(mark,names[key],colour,state.celestialThroughTerrain,state.aimTarget===key));
+        collect(pointLabel(mark,names[key],colour,state.celestialThroughTerrain));
       }
       $('astroReadout').innerHTML=html;
       if(preview){
@@ -459,12 +538,10 @@
       collect(pointLabel(pos,'Camera',C.Color.WHITE));
       const base=C.Cartesian3.fromDegrees(state.lon,state.lat,state.ground);
       collect(line([base,pos],C.Color.WHITE.withAlpha(.55),2,true));
-      if(state.aimTarget==='custom'){
-        const target=targetCartesian(),accent=C.Color.fromCssColorString('#ffa875');
-        collect(pointLabel(target,'Target',accent));
-        collect(line([C.Cartesian3.fromDegrees(state.targetLon,state.targetLat,state.targetGround),target],accent.withAlpha(.7),2,true));
-        collect(line([pos,target],accent.withAlpha(.45),1.6,true));
-      }
+      const target=targetCartesian(),accent=C.Color.fromCssColorString('#ffa875');
+      collect(pointLabel(target,'Target',accent));
+      collect(line([C.Cartesian3.fromDegrees(state.targetLon,state.targetLat,state.targetGround),target],accent.withAlpha(.7),2,true));
+      collect(line([pos,target],accent.withAlpha(.45),1.6,true));
       const end=cornersAt(pos,basis,dist,op),start=cornersAt(pos,basis,tip,op);
       const shortRange=dist<=SOLID_GEOMETRY_LIMIT_M;
       if(state.showFrustum){
@@ -489,6 +566,9 @@
         outline(focusCorners,C.Color.fromCssColorString('#ffdf74'),2);
       }
     }
+    try{drawTargetAlignments();}
+    catch(e){console.warn('Target alignment calculation failed',e);
+      $('targetAlignmentReadout').textContent='Target rise/set calculation unavailable.';}
     drawAstronomy(pos,basis,op);
     renderReadouts();
     if(preview)updatePreview();
@@ -809,11 +889,21 @@
     $('focal').addEventListener('change',()=>updateLens('focal',Number($('focal').value)));
     $('focus').addEventListener('change',()=>updateLens('focus',Number($('focus').value)));
     $('aperture').addEventListener('change',()=>updateLens('aperture',Number($('aperture').value)));
-    $('aimTarget').addEventListener('change',()=>{state.aimTarget=$('aimTarget').value;renderTargetFields();schedule();});
-    $('aimTargetBtn').addEventListener('click',()=>aim(state.aimTarget));
+    $('aimTargetBtn').addEventListener('click',()=>aim('custom'));
     for(const id of ['targetLat','targetLon'])$(id).addEventListener('keydown',e=>{if(e.key==='Enter')$('targetCoordinatesBtn').click();});
     $('targetCoordinatesBtn').addEventListener('click',()=>placeTarget(Number($('targetLat').value),Number($('targetLon').value)));
     $('targetRefineGroundBtn').addEventListener('click',()=>sampleGround({target:true}));
+    $('targetProjectionLengthSlider').addEventListener('input',()=>{
+      state.targetProjectionLength=Ground.fromSlider($('targetProjectionLengthSlider').value);
+      $('targetProjectionLength').value=state.targetProjectionLength;
+      schedule();
+    });
+    $('targetProjectionLength').addEventListener('change',()=>{
+      state.targetProjectionLength=Ground.limitLength(Number($('targetProjectionLength').value));
+      $('targetProjectionLength').value=state.targetProjectionLength;
+      $('targetProjectionLengthSlider').value=Ground.toSlider(state.targetProjectionLength);
+      schedule();
+    });
     $('cameraPreset').addEventListener('change',()=>{
       const preset=$('cameraPreset').value;state.cameraPreset=preset;
       if(presets[preset]){[state.sensorWidth,state.sensorHeight,state.coc]=presets[preset];
@@ -840,7 +930,9 @@
       $('groundBearingLengthSlider').value=Ground.toSlider(state.groundBearingLength);
       schedule();
     });
-    for(const id of ['showFrustum','showDof','showFocus','showAxis','showSun','showMoon','showCore','showTrajectories','showGroundBearings','celestialThroughTerrain'])
+    for(const id of ['showFrustum','showDof','showFocus','showAxis','showSun','showMoon','showCore','showTrajectories','showGroundBearings','celestialThroughTerrain',
+      'targetSunRise','targetSunSet','targetMoonRise','targetMoonSet',
+      'targetShowBody','targetShowCameras'])
       $(id).addEventListener('change',()=>{state[id]=$(id).checked;schedule();});
     $('wallTime').addEventListener('change',()=>{
       if(!Number.isFinite(Date.parse($('wallTime').value)))return;

@@ -6,7 +6,7 @@ const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
 const app=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
 const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]);
 assert.equal(ids.length,new Set(ids).size,'HTML IDs must be unique');
-for (const required of ['focalSlider','apertureSlider','focusSlider','targetLat','targetLon','targetGround','targetAgl','targetAmsl','targetPickBtn','aimTarget','aimTargetBtn','showTrajectories','celestialShellScale','celestialShellReadout','celestialThroughTerrain','solarEventsBody','solarPhaseReadout','previewCelestials','previewTrajectories','previewHint','projectionModeNote','frameInfo','showGroundBearings','groundBearingLengthSlider','groundBearingLength','groundBearingReadout'])
+for (const required of ['focalSlider','apertureSlider','focusSlider','targetLat','targetLon','targetGround','targetAgl','targetAmsl','targetPickBtn','aimTarget','aimTargetBtn','showTrajectories','celestialShellScale','celestialShellReadout','celestialThroughTerrain','solarEventsBody','solarPhaseReadout','previewCelestials','previewTrajectories','previewHint','projectionModeNote','frameInfo','showGroundBearings','groundBearingLengthSlider','groundBearingLength','groundBearingReadout','targetProjectionLength','targetProjectionLengthSlider','targetAlignmentReadout','targetSunRise','targetSunSet','targetMoonRise','targetMoonSet','targetShowBody','targetShowCameras','aimTargetBtn'])
   assert.ok(ids.includes(required),`Missing ${required}`);
 for(const match of app.matchAll(/\$\('([^']+)'\)/g)){
   assert.ok(ids.includes(match[1]),`JavaScript references missing HTML element: ${match[1]}`);
@@ -47,4 +47,12 @@ assert.ok(app.includes('classificationType:C.ClassificationType.BOTH'),'Ground b
 assert.ok(app.includes('dashed=current&&entry.below'),'Current bearing must be dashed below horizon');
 assert.ok(app.includes('if(preview || !state.showGroundBearings)return;'),'Ground lines should not clutter the camera view');
 assert.ok(app.includes('Ground.dailyRiseSet('),'Rise and set must be calculated for the selected local date');
+assert.ok(html.includes('<summary>4 · Target</summary>'),'Physical target section must be labelled Target');
+assert.ok(!html.includes('id="aimTarget"'),'Celestial aim dropdown must be removed');
+assert.ok(!html.includes('customTargetControls'),'Target controls are always visible');
+assert.ok(app.includes("aim('custom')"),'Aim camera button must point to physical target');
+assert.ok(app.includes("Ground.targetAlignments("),'Calculate rise/set from target location');
+assert.ok(app.includes("Ground.sampleRay(state.targetLat,state.targetLon,az,state.targetProjectionLength"),'All target rays originate at physical target');
+assert.ok(app.includes("material:towardsBody?colour:new C.PolylineDashMaterialProperty"),'Candidate camera rays must be dashed');
+assert.ok(app.includes("targetShowBody")&&app.includes("targetShowCameras"),'Both target direction modes must be independently selectable');
 console.log('UI references tests passed');

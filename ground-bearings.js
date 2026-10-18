@@ -82,7 +82,23 @@
     }
     return result;
   }
-  const api={DEFAULT_LENGTH,MIN_LENGTH,MAX_LENGTH,limitLength,fromSlider,toSlider,destination,sampleRay,startUtc,dailyRiseSet};
+  function oppositeAzimuth(az) {
+    if(!Number.isFinite(az))throw new RangeError('Azimuth must be finite');
+    return ((az+180)%360+360)%360;
+  }
+  // Provides both bearing directions at the fixed physical target.
+  // The reverse line contains candidate photographer locations; it is only
+  // a horizontal azimuth guide and does not guarantee vertical alignment.
+  function targetAlignments(astronomy,calculate,day,offset,lat,lon,heightM) {
+    const events=dailyRiseSet(astronomy,calculate,day,offset,lat,lon,heightM);
+    return ['sun','moon'].flatMap(body=>['rise','set'].map(event=>{
+      const hit=events[body][event];
+      return {body,event,date:hit?.date??null,
+        celestialAz:hit?.az??null,
+        cameraAz:hit?oppositeAzimuth(hit.az):null};
+    }));
+  }
+  const api={DEFAULT_LENGTH,MIN_LENGTH,MAX_LENGTH,limitLength,fromSlider,toSlider,destination,sampleRay,startUtc,dailyRiseSet,oppositeAzimuth,targetAlignments};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else root.GroundBearings=api;
 })(typeof window!=='undefined'?window:globalThis);

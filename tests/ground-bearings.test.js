@@ -34,4 +34,19 @@ assert.equal(result.sun.rise.az,72);
 assert.equal(result.sun.set.az,285);
 assert.equal(result.moon.rise.az,115);
 assert.equal(result.moon.set,null);
-console.log('Ground-bearing geodesic and rise/set tests passed');
+const targetEvents=G.targetAlignments(astronomy,(date)=>({
+  sun:{az:72},moon:{az:115}
+}),'2026-10-18',11,-35.3,149.1,576);
+assert.equal(targetEvents.length,4);
+assert.deepEqual(targetEvents.map(e=>e.body+e.event),['sunrise','sunset','moonrise','moonset']);
+assert.equal(targetEvents[0].celestialAz,72);
+assert.equal(targetEvents[0].cameraAz,252);
+assert.equal(targetEvents[2].cameraAz,295);
+assert.equal(targetEvents[3].celestialAz,null);
+assert.equal(targetEvents[3].cameraAz,null);
+assert.equal(G.oppositeAzimuth(270),90);
+assert.equal(G.oppositeAzimuth(90),270);
+assert.equal(G.oppositeAzimuth(350),170);
+assert.equal(G.oppositeAzimuth(-10),170);
+assert.throws(()=>G.oppositeAzimuth(Number.NaN));
+console.log('Ground-bearing geodesic, target alignment, and rise/set tests passed');

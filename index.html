@@ -7,7 +7,7 @@
   <title>Photo Geometry — 3D photography planner</title>
   <script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/';</script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Widgets/widgets.css">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
   <script defer src="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Cesium.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
   <script defer src="optics.js?v=2"></script>
@@ -16,14 +16,14 @@
   <script defer src="sky-shell.js?v=1"></script>
   <script defer src="solar-phases.js?v=2"></script>
   <script defer src="preview-projection.js?v=1"></script>
-  <script defer src="ground-bearings.js?v=1"></script>
-  <script defer src="app.js?v=12"></script>
+  <script defer src="ground-bearings.js?v=2"></script>
+  <script defer src="app.js?v=13"></script>
 </head>
 <body>
   <div class="app">
     <aside class="panel">
       <header>
-        <h1>Photo Geometry <small>v1.2</small></h1>
+        <h1>Photo Geometry <small>v1.3</small></h1>
         <p>3D camera field-of-view &amp; depth-of-field planner</p>
       </header>
       <div class="view-actions">
@@ -81,24 +81,46 @@
       </details>
 
       <details open>
-        <summary>4 · Point at target</summary>
-        <label>Target
-          <select id="aimTarget"><option value="sun">Sun</option><option value="moon">Moon</option><option value="core">Galactic core</option><option value="custom">User designated point</option></select>
-        </label>
-        <div class="buttons"><button id="aimTargetBtn" type="button" class="primary">Point at target</button></div>
-        <div id="customTargetControls" hidden>
-          <div class="formgrid">
-            <label>Target latitude (°) <input id="targetLat" type="number" min="-90" max="90" step="any"></label>
-            <label>Target longitude (°) <input id="targetLon" type="number" min="-180" max="180" step="any"></label>
+        <summary>4 · Target</summary>
+        <p class="hint">Place the physical subject you want to photograph. Its position and height are independent of the camera.</p>
+        <div class="formgrid">
+          <label>Target latitude (°) <input id="targetLat" type="number" min="-90" max="90" step="any"></label>
+          <label>Target longitude (°) <input id="targetLon" type="number" min="-180" max="180" step="any"></label>
+        </div>
+        <div class="buttons">
+          <button id="targetCoordinatesBtn" type="button">Place at coordinates</button>
+          <button id="targetPickBtn" type="button">Click map to place target</button>
+        </div>
+        <label>Target ground elevation (m AMSL) <input id="targetGround" type="number" step="0.1"></label>
+        <div class="formgrid">
+          <label>Target height AGL (m) <input id="targetAgl" type="number" step="0.1"></label>
+          <label>Target elevation AMSL (m) <input id="targetAmsl" type="number" step="0.1"></label>
+        </div>
+        <div id="targetHeightSource" class="hint">Target ground elevation is approximate and manually adjustable.</div>
+        <div class="buttons">
+          <button id="targetRefineGroundBtn" type="button">Resample target ground</button>
+          <button id="aimTargetBtn" type="button">Aim camera at target</button>
+        </div>
+        <div class="target-projections">
+          <div class="target-projections-heading">Target alignment projections</div>
+          <p class="hint">Choose rise/set events on the selected date. Every line starts at the target.</p>
+          <div class="checks">
+            <label><input id="targetSunRise" type="checkbox" checked> Sun rise</label>
+            <label><input id="targetSunSet" type="checkbox" checked> Sun set</label>
+            <label><input id="targetMoonRise" type="checkbox" checked> Moon rise</label>
+            <label><input id="targetMoonSet" type="checkbox" checked> Moon set</label>
           </div>
-          <div class="buttons"><button id="targetCoordinatesBtn" type="button">Place at coordinates</button><button id="targetPickBtn" type="button">Click map to place target</button></div>
-          <label>Target ground elevation (m AMSL) <input id="targetGround" type="number" step="0.1"></label>
-          <div class="formgrid">
-            <label>Target height AGL (m) <input id="targetAgl" type="number" step="0.1"></label>
-            <label>Target elevation AMSL (m) <input id="targetAmsl" type="number" step="0.1"></label>
+          <div class="target-direction-options">
+            <label><input id="targetShowBody" type="checkbox" checked> <i class="target-line-legend target-body-line"></i> Towards Sun/Moon</label>
+            <label><input id="targetShowCameras" type="checkbox" checked> <i class="target-line-legend target-camera-line"></i> Candidate camera positions</label>
           </div>
-          <div id="targetHeightSource" class="hint">Target ground elevation is approximate and manually adjustable.</div>
-          <div class="buttons"><button id="targetRefineGroundBtn" type="button">Resample target ground</button></div>
+          <div class="rangegrid ground-bearing-range">
+            <label for="targetProjectionLengthSlider">Line length (m)</label>
+            <input id="targetProjectionLengthSlider" type="range" min="0" max="1000" step="1" value="547">
+            <input id="targetProjectionLength" type="number" min="100" max="50000" step="100" value="3000" aria-label="Target alignment line length in metres">
+          </div>
+          <div id="targetAlignmentReadout" class="target-alignment-readout" aria-live="off">Calculating target alignments…</div>
+          <p class="hint">Solid Sun/Moon-coloured lines point towards each rising or setting body; dashed teal lines point in the opposite direction towards possible photographers. Camera bearings are 180° opposite the celestial bearings. These are azimuth-only guides, not a guarantee of vertical alignment or an unobstructed photograph.</p>
         </div>
       </details>
 
