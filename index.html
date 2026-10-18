@@ -7,7 +7,7 @@
   <title>Photo Geometry — 3D photography planner</title>
   <script>window.CESIUM_BASE_URL='https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/';</script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Widgets/widgets.css">
-  <link rel="stylesheet" href="styles.css?v=10">
+  <link rel="stylesheet" href="styles.css?v=11">
   <script defer src="https://cdn.jsdelivr.net/npm/cesium@1.145.0/Build/Cesium/Cesium.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
   <script defer src="optics.js?v=2"></script>
@@ -16,13 +16,13 @@
   <script defer src="sky-shell.js?v=1"></script>
   <script defer src="solar-phases.js?v=2"></script>
   <script defer src="preview-projection.js?v=1"></script>
-  <script defer src="app.js?v=10"></script>
+  <script defer src="app.js?v=11"></script>
 </head>
 <body>
   <div class="app">
     <aside class="panel">
       <header>
-        <h1>Photo Geometry <small>v1.0</small></h1>
+        <h1>Photo Geometry <small>v1.1</small></h1>
         <p>3D camera field-of-view &amp; depth-of-field planner</p>
       </header>
       <div class="view-actions">
@@ -72,8 +72,7 @@
         <div class="rangegrid"><label for="heading">Heading (° true)</label><input id="heading" type="range" min="0" max="359.9" step="0.1"><input id="headingNumber" type="number" min="0" max="359.9" step="0.1"></div>
         <div class="rangegrid"><label for="pitch">Pitch (°)</label><input id="pitch" type="range" min="-89" max="89" step="0.1"><input id="pitchNumber" type="number" min="-89" max="89" step="0.1"></div>
         <div class="rangegrid"><label for="roll">Roll (°)</label><input id="roll" type="range" min="-180" max="180" step="1"><input id="rollNumber" type="number" min="-180" max="180" step="1"></div>
-        <div class="buttons"><button id="levelRollBtn" type="button">Level camera (roll 0°)</button></div>
-        <p class="hint">Roll rotates the camera around its optical axis. A 90° roll produces a sideways view.</p>
+        <p class="hint">Roll rotates the camera around its optical axis.</p>
         <label>Projection extent (m) <input id="extent" type="number" min="1" max="50000" step="1"></label>
         <div id="projectionModeNote" class="hint" role="note"></div>
         <div class="checks"><label><input id="showFrustum" type="checkbox" checked> FOV frustum</label><label><input id="showDof" type="checkbox" checked> DOF volume</label><label><input id="showFocus" type="checkbox" checked> Focus plane</label><label><input id="showAxis" type="checkbox" checked> Optical axis</label></div>
@@ -148,15 +147,14 @@
     </aside>
     <main class="maparea">
       <div id="cesiumContainer"></div>
-      <div id="previewHint" class="preview-hint" hidden>
-        Camera view uses the selected roll. <button id="previewLevelBtn" type="button">Level roll to 0°</button>
-      </div>
+      <div id="previewHint" class="preview-hint" hidden>Drag to pan the camera · Azimuth/elevation update automatically · Dashed arcs are below the horizon</div>
       <div id="cameraFrame" hidden>
         <div class="frame-inner">
           <div class="viewfinder-title">SENSOR FRAME</div>
           <div class="crosshair" aria-hidden="true">+</div>
           <div class="viewfinder-corner tl"></div><div class="viewfinder-corner tr"></div>
           <div class="viewfinder-corner bl"></div><div class="viewfinder-corner br"></div>
+          <svg id="previewTrajectories" class="preview-trajectories" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Visible portions of the daily celestial trajectories"></svg>
           <div id="previewCelestials" class="preview-celestials" aria-label="Celestial positions in the camera frame"></div>
           <div id="frameInfo" class="viewfinder-footer">CAMERA · GEOMETRIC VIEW</div>
         </div>

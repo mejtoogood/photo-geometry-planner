@@ -68,6 +68,7 @@
   let state=sanitise(readShared()||previous||{});
   let viewer=null, googleTiles=null, terrainProvider=null, terrainTask=null;
   let overlays=[]; let preview=false, overviewPose=null, placing=null, drawPending=false;
+  let previewControllerState=null,lookPointer=null;
   let elevationRevision=0, targetElevationRevision=0, lastAstro=null, trajectoryCache=null, solarDayCache=null;
   function status(message,error=false) {
     $('status').textContent=message;$('status').classList.toggle('error',error);
@@ -251,6 +252,52 @@
       flush();
     }
   }
+  function drawPreviewTrajectories(basis,op,colours,names) {
+    const svg=$('previewTrajectories');
+    svg.replaceChildren();
+    if(!state.showTrajectories)return;
+    const paths=cachedTrajectories();
+    const ns='http://www.w3.org/2000/svg';
+    const point=sample=>{
+      const dir=azAltVector(basis.enu,sample.az,sample.alt);
+      return Projection.project(dir,basis,op.tanHalfH,op.tanHalfV);
+    };
+    for(const key of ['sun','moon','core']){
+      if(!state['show'+names[key]])continue;
+      const data=paths[key];
+      const visible={above:[],below:[]};
+      for(let i=1;i<data.length;i++){
+        const first=point(data[i-1]),second=point(data[i]);
+        if(!first||!second)continue;
+        let segments=[[first,second,data[i-1].alt>=0]];
+        const before=data[i-1].alt,after=data[i].alt;
+        if((before<0&&after>=0)||(before>=0&&after<0)){
+          const ratio=before/(before-after);
+          const middle={x:first.x+ratio*(second.x-first.x),y:first.y+ratio*(second.y-first.y)};
+          segments=[[first,middle,before>=0],[middle,second,after>=0]];
+        }
+        for(const [a,b,above] of segments){
+          const cut=Projection.clipSegment(a,b);
+          if(!cut)continue;
+          const x1=(cut.x1*1000).toFixed(2),y1=(cut.y1*1000).toFixed(2);
+          const x2=(cut.x2*1000).toFixed(2),y2=(cut.y2*1000).toFixed(2);
+          visible[above?'above':'below'].push('M'+x1+' '+y1+' L'+x2+' '+y2);
+        }
+      }
+      for(const segment of ['below','above']){
+        if(!visible[segment].length)continue;
+        const path=document.createElementNS(ns,'path');
+        path.setAttribute('d',visible[segment].join(' '));
+        path.setAttribute('stroke',colours[key]);
+        path.setAttribute('stroke-opacity',segment==='above'?'0.94':'0.55');
+        path.setAttribute('stroke-width',segment==='above'?'2.5':'1.7');
+        path.setAttribute('vector-effect','non-scaling-stroke');
+        path.setAttribute('fill','none');
+        if(segment==='below')path.setAttribute('stroke-dasharray','6 5');
+        svg.append(path);
+      }
+    }
+  }
   function drawPreviewCelestials(basis,op,colours,names) {
     const layer=$('previewCelestials');
     layer.replaceChildren();
@@ -301,8 +348,13 @@
         collect(pointLabel(mark,names[key],colour,state.celestialThroughTerrain,state.aimTarget===key));
       }
       $('astroReadout').innerHTML=html;
-      if(preview)drawPreviewCelestials(basis,op,colours,names);
-      else $('previewCelestials').replaceChildren();
+      if(preview){
+        drawPreviewTrajectories(basis,op,colours,names);
+        drawPreviewCelestials(basis,op,colours,names);
+      }else{
+        $('previewTrajectories').replaceChildren();
+        $('previewCelestials').replaceChildren();
+      }
     } catch(e) {
       $('astroReadout').textContent='Celestial calculation unavailable: '+e.message;
       console.error('Astronomy calculation',e);
@@ -387,6 +439,50 @@
     viewer.camera.setView({destination:pos,orientation:{direction:basis.f,up:basis.up}});
     viewFrustum();
   }
+  function setPreviewCameraControls(active) {
+    const ctrl=viewer.scene.screenSpaceCameraController;
+    const keys=['enableRotate','enableTranslate','enableZoom','enableTilt','enableLook'];
+    if(active){
+      previewControllerState=Object.fromEntries(keys.map(key=>[key,ctrl[key]]));
+      for(const key of keys)ctrl[key]=false;
+    }else if(previewControllerState){
+      for(const key of keys)ctrl[key]=previewControllerState[key];
+      previewControllerState=null;
+    }
+  }
+  function registerPreviewDragging() {
+    const canvas=viewer.canvas;
+    canvas.addEventListener('pointerdown',event=>{
+      if(!preview||event.button!==0)return;
+      lookPointer={id:event.pointerId,x:event.clientX,y:event.clientY};
+      canvas.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    },true);
+    canvas.addEventListener('pointermove',event=>{
+      if(!preview||lookPointer?.id!==event.pointerId)return;
+      const dx=event.clientX-lookPointer.x,dy=event.clientY-lookPointer.y;
+      lookPointer.x=event.clientX;lookPointer.y=event.clientY;
+      if(dx===0&&dy===0)return;
+      const frame=$('cameraFrame').querySelector('.frame-inner');
+      const hfov=deg(2*Math.atan(state.sensorWidth/(2*state.focal)));
+      const vfov=deg(2*Math.atan(state.sensorHeight/(2*state.focal)));
+      const angles=Projection.dragToAngles(state.heading,state.pitch,state.roll,dx,dy,
+        frame.clientWidth,frame.clientHeight,hfov,vfov);
+      state.heading=angles.heading;state.pitch=angles.pitch;
+      $('heading').value=state.heading;$('headingNumber').value=Number(state.heading.toFixed(2));
+      $('pitch').value=state.pitch;$('pitchNumber').value=Number(state.pitch.toFixed(2));
+      schedule();
+      event.preventDefault();
+    },true);
+    const release=event=>{
+      if(lookPointer?.id!==event.pointerId)return;
+      lookPointer=null;
+      if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);
+    };
+    canvas.addEventListener('pointerup',release,true);
+    canvas.addEventListener('pointercancel',release,true);
+    canvas.addEventListener('lostpointercapture',()=>{lookPointer=null;},true);
+  }
   function setPreview(active) {
     if(!viewer||active===preview)return;
     if(active) {
@@ -399,13 +495,17 @@
       $('cameraFrame').hidden=false;
       $('previewHint').hidden=false;
       document.querySelector('.maparea').classList.add('preview-active');
+      setPreviewCameraControls(true);
       updatePreview();
     } else {
       preview=false;
+      lookPointer=null;
+      setPreviewCameraControls(false);
       $('cameraFrame').hidden=true;
       $('previewHint').hidden=true;
       document.querySelector('.maparea').classList.remove('preview-active');
       $('previewCelestials').replaceChildren();
+      $('previewTrajectories').replaceChildren();
       if(overviewPose){
         viewer.camera.setView({destination:overviewPose.destination,
           orientation:{direction:overviewPose.direction,up:overviewPose.up}});
@@ -633,16 +733,6 @@
       if(presets[preset]){[state.sensorWidth,state.sensorHeight,state.coc]=presets[preset];
         for(const id of ['sensorWidth','sensorHeight','coc'])showField(id);}
       schedule();});
-    $('levelRollBtn').addEventListener('click',()=>{
-      state.roll=0;
-      $('roll').value=0;$('rollNumber').value=0;
-      schedule();
-    });
-    $('previewLevelBtn').addEventListener('click',()=>{
-      state.roll=0;
-      $('roll').value=0;$('rollNumber').value=0;
-      schedule();
-    });
     for(const id of ['heading','pitch','roll']){
       $(id).addEventListener('input',()=>{state[id]=Number($(id).value);$(id+'Number').value=$(id).value;schedule();});
       $(id+'Number').addEventListener('change',()=>{const v=clamp(Number($(id+'Number').value),Number($(id).min),Number($(id).max));
@@ -723,6 +813,7 @@
     viewer.camera.setView({destination:C.Cartesian3.fromDegrees(state.lon,state.lat,state.ground+2500),
       orientation:{heading:rad(10),pitch:rad(-45),roll:0}});
     viewer.screenSpaceEventHandler.setInputAction(e=>onPlace(e.position),C.ScreenSpaceEventType.LEFT_CLICK);
+    registerPreviewDragging();
     const existing=localStorage.getItem('photoGeometryIonToken')||localStorage.getItem('cesiumIonToken')||'';
     $('ionToken').value=existing;
     $('apertureSlider').max=String(L.apertures.length-1);

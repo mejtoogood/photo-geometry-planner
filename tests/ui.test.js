@@ -6,7 +6,7 @@ const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
 const app=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
 const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]);
 assert.equal(ids.length,new Set(ids).size,'HTML IDs must be unique');
-for (const required of ['focalSlider','apertureSlider','focusSlider','targetLat','targetLon','targetGround','targetAgl','targetAmsl','targetPickBtn','aimTarget','aimTargetBtn','showTrajectories','celestialShellScale','celestialShellReadout','celestialThroughTerrain','solarEventsBody','solarPhaseReadout','previewCelestials','levelRollBtn','previewHint','previewLevelBtn','projectionModeNote','frameInfo'])
+for (const required of ['focalSlider','apertureSlider','focusSlider','targetLat','targetLon','targetGround','targetAgl','targetAmsl','targetPickBtn','aimTarget','aimTargetBtn','showTrajectories','celestialShellScale','celestialShellReadout','celestialThroughTerrain','solarEventsBody','solarPhaseReadout','previewCelestials','previewTrajectories','previewHint','projectionModeNote','frameInfo'])
   assert.ok(ids.includes(required),`Missing ${required}`);
 for(const match of app.matchAll(/\$\('([^']+)'\)/g)){
   assert.ok(ids.includes(match[1]),`JavaScript references missing HTML element: ${match[1]}`);
@@ -35,4 +35,10 @@ const previewSource=app.slice(app.indexOf('function setPreview(active)'),app.ind
 assert.ok(previewSource.indexOf("$('cameraFrame').hidden=false") < previewSource.indexOf('updatePreview()'),'Must show viewfinder before measuring or updating preview');
 assert.ok(previewSource.includes("document.querySelector('.maparea').classList.add('preview-active')"),'Viewfinder mode activates presentation');
 assert.ok(html.includes('viewfinder-corner'),'Viewfinder must contain explicit corner marks');
+assert.ok(!html.includes('levelRollBtn')&&!html.includes('previewLevelBtn'),'Remove roll reset buttons');
+assert.ok(app.includes('registerPreviewDragging()'),'Camera view drag controls must be registered');
+assert.ok(app.includes('setPreviewCameraControls(true)')&&app.includes('setPreviewCameraControls(false)'),'Cesium navigation must be disabled during camera preview');
+assert.ok(app.includes('Projection.dragToAngles'),'Mouse drag must update heading/pitch');
+assert.ok(app.includes('Projection.clipSegment'),'Daily trajectories must be clipped to sensor frame');
+assert.ok(app.includes('drawPreviewTrajectories(basis,op,colours,names)'),'Camera view must show trajectories');
 console.log('UI references tests passed');
